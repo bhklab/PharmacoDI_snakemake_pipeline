@@ -1,7 +1,7 @@
   
 nthread: 16
-raw_data: 'data/rawdata'
-metadata: 'data/metadata'
-gene_signatures: 'data/rawdata/gene_signatures'
-proc_data: 'data/procdata'
-output: 'data/latest'
+raw_data: 'rawdata'
+metadata: 'metadata'
+gene_signatures: 'rawdata/gene_signatures'
+proc_data: 'procdata'
+output: 'latest'

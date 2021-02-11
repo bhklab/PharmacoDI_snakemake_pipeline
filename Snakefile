@@ -1,4 +1,3 @@
-# import PharmacoDI as pdi
 import os
 
 configfile: 'config.yaml'
@@ -8,6 +7,7 @@ metadata_dir = config['metadata']
 gene_sig_dir = config['gene_signatures']
 procdata_dir = config['proc_data']
 output_dir = config['output']
+
 
 
 # TODO - should these be specified in the config file or elsewhere?
@@ -39,13 +39,13 @@ rule all:
         expand("{output}/{table}.csv", output=output_dir, table=(pset_tables + meta_tables))
 
 
-
 # ---- 1. Preprocess PSets individually
 rule load_psets_to_dicts:
     output:
         expand("{procdata}/{pset}/{pset}_{{table}}.csv",
                procdata=procdata_dir, pset=pset_names)
     run:
+        import PharmacoDI as pdi
         print("Running rule 1")
         for pset_name in pset_names:
             print(pset_name)
@@ -63,6 +63,7 @@ rule merge_pset_tables:
     output:
         expand("{output}/{{table}}.csv", output=output_dir)
     run:
+        import PharmacoDI as pdi
         print("Running rule 2")
         pdi.combine_all_pset_tables(procdata_dir, output_dir)
 
@@ -78,6 +79,7 @@ rule build_synonym_tables:
         os.path.join(output_dir, 'tissue_synonym.csv'),
         os.path.join(output_dir, 'drug_synonym.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 3")
         pdi.build_cell_synonym_df(input.cell_meta_file, metadata_dir, output_dir)
         pdi.build_tissue_synonym_df(input.cell_meta_file, metadata_dir, output_dir)
@@ -91,6 +93,7 @@ rule get_chembl_targets:
     output:
         os.path.join(metadata_dir, 'chembl_targets.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 4a")
         pdi.get_chembl_targets(params)
 
@@ -104,6 +107,7 @@ rule get_chembl_drug_targets:
     output:
         chembl_drug_target_file = os.path.join(metadata_dir, 'chembl_drug_targets.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 4b")
         pdi.get_chembl_drug_target_mappings(
             input.drug_annotation_file, input.chembl_target_file, params)
@@ -119,6 +123,7 @@ rule build_target_tables:
         os.path.join(output_dir, 'drug_target.csv'),
         os.path.join(output_dir, 'gene_target.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 5")
         pdi.build_target_tables(input.drugbank_file, input.chembl_drug_target_file, output_dir)
 
@@ -131,6 +136,7 @@ rule build_cellosaurus:
     output:
         os.path.join(output_dir, 'cellosaurus.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 6")
         pdi.build_cellosaurus_df(input.cellosaurus_path, output_dir)
 
@@ -143,5 +149,6 @@ rule build_clinical_trial_tables:
         os.path.join(output_dir, 'clinical_trial.csv'),
         os.path.join(output_dir, 'drug_trial.csv')
     run:
+        import PharmacoDI as pdi
         print("Running rule 7")
         pdi.build_clinical_trial_tables(output_dir)
