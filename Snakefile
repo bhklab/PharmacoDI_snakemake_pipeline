@@ -1,4 +1,5 @@
 import os
+import sys
 
 configfile: 'config.yaml'
 
@@ -13,10 +14,11 @@ output_dir = config['output']
 # TODO - should these be specified in the config file or elsewhere?
 pset_names = ['GDSC_v1', 'GDSC_v2', 'CTRPv2',
               'FIMM', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast']
-pset_tables = ['cell', 'dataset_cell', 'dataset_compound', 'dataset_statistics',
+extra_tables = ['gene_annotation', 'gene_drug', 'gene', 'mol_cell']
+min_tables = ['cell', 'dataset_cell', 'dataset_compound', 'dataset_statistics',
                'dataset_tissue', 'dataset', 'dose_response', 'drug_annotation', 'drug',
-               'experiment', 'gene_annotation', 'gene_drug', 'gene', 'mol_cell',
-               'profile', 'tissue']
+               'experiment', 'profile', 'tissue']
+pset_tables = min_tables + extra_tables
 meta_tables = ['cell_synonym', 'tissue_synonym', 'drug_synonym', 'target', 
                 'drug_target', 'gene_target', 'cellosaurus', 'clinical_trial',
                 'drug_trial']
@@ -40,32 +42,37 @@ rule all:
 
 
 # ---- 1. Preprocess PSets individually
+# TODO will eventually produce error when not all pset tables made
 rule load_psets_to_dicts:
     output:
-        expand("{procdata}/{pset}/{pset}_{{table}}.csv",
-               procdata=procdata_dir, pset=pset_names)
+        expand("{procdata}/{{pset}}/{{pset}}_{table}.csv", procdata=procdata_dir, table=pset_tables)
     run:
-        import PharmacoDI as pdi
-        print("Running rule 1")
-        for pset_name in pset_names:
-            print(pset_name)
-            pset_dict = pdi.pset_df_to_nested_dict(
-                pdi.read_pset(pset_name, pset_dir))
-            pdi.build_all_pset_tables(
-                pset_dict, pset_name, procdata_dir, gene_sig_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 1")
+            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(wildcards.pset, pset_dir))
+            pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, gene_sig_dir)
+        except BaseException as e:
+            print(e)
 
 
 # ---- 2. Merge PSet tables
 rule merge_pset_tables:
     input:
-        expand("{procdata}/{pset}/{pset}_{{table}}.csv",
-               procdata=procdata_dir, pset=pset_names)
+        expand("{procdata}/{pset}/{pset}_{table}.csv",
+               procdata=procdata_dir, pset=pset_names, table=min_tables),
+        expand("{procdata}/{pset}/{pset}_{table}.csv", procdata=procdata_dir, 
+                pset=['GDSC_v1', 'GDSC_v2', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast'], table=extra_tables),
+        os.path.join(procdata_dir, 'CTRPv2', 'CTRPv2_gene_drug.csv')
     output:
-        expand("{output}/{{table}}.csv", output=output_dir)
+        expand("{output}/{table}.csv", output=output_dir, table=pset_tables)
     run:
-        import PharmacoDI as pdi
-        print("Running rule 2")
-        pdi.combine_all_pset_tables(procdata_dir, output_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 2")
+            pdi.combine_all_pset_tables(procdata_dir, output_dir)
+        except BaseException as e:
+            print(e)
 
 
 # ---- 3. Build synonym tables
@@ -79,11 +86,15 @@ rule build_synonym_tables:
         os.path.join(output_dir, 'tissue_synonym.csv'),
         os.path.join(output_dir, 'drug_synonym.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 3")
-        pdi.build_cell_synonym_df(input.cell_meta_file, metadata_dir, output_dir)
-        pdi.build_tissue_synonym_df(input.cell_meta_file, metadata_dir, output_dir)
-        pdi.build_drug_synonym_df(input.drug_meta_file, metadata_dir, output_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 3")
+            pdi.build_cell_synonym_df(input.cell_meta_file, output_dir)
+            pdi.build_tissue_synonym_df(input.cell_meta_file, output_dir)
+            pdi.build_drug_synonym_df(input.drug_meta_file, output_dir)
+        except BaseException as e:
+            print(e)
+            
 
 
 # ---- 4. Run ChEMBL API to get targets and drug targets tables
@@ -93,9 +104,12 @@ rule get_chembl_targets:
     output:
         os.path.join(metadata_dir, 'chembl_targets.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 4a")
-        pdi.get_chembl_targets(params)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 4a")
+            pdi.get_chembl_targets(params)
+        except BaseException as e:
+            print(e)
 
 
 rule get_chembl_drug_targets:
@@ -107,15 +121,23 @@ rule get_chembl_drug_targets:
     output:
         chembl_drug_target_file = os.path.join(metadata_dir, 'chembl_drug_targets.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 4b")
-        pdi.get_chembl_drug_target_mappings(
-            input.drug_annotation_file, input.chembl_target_file, params)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 4b")
+            pdi.get_chembl_drug_target_mappings(
+                input.drug_annotation_file, input.chembl_target_file, params)
+        except BaseException as e:
+            print(e)
+        except:
+            e = sys.exc_info()[0]
+            print(e)
 
 
 # ---- 5. Build target and drug target tables
 rule build_target_tables:
     input:
+        os.path.join(output_dir, 'gene.csv'),
+        os.path.join(output_dir, 'drug_synonym.csv'),
         chembl_drug_target_file = os.path.join(metadata_dir, 'chembl_drug_targets.csv'),
         drugbank_file = os.path.join(metadata_dir, "drugbank_targets_has_ref_has_uniprot.csv")
     output:
@@ -123,9 +145,12 @@ rule build_target_tables:
         os.path.join(output_dir, 'drug_target.csv'),
         os.path.join(output_dir, 'gene_target.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 5")
-        pdi.build_target_tables(input.drugbank_file, input.chembl_drug_target_file, output_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 5")
+            pdi.build_target_tables(input.drugbank_file, input.chembl_drug_target_file, output_dir)
+        except BaseException as e:
+            print(e)
 
 
 # ---- 6. Build cellosaurus
@@ -136,9 +161,12 @@ rule build_cellosaurus:
     output:
         os.path.join(output_dir, 'cellosaurus.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 6")
-        pdi.build_cellosaurus_df(input.cellosaurus_path, output_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 6")
+            pdi.build_cellosaurus_df(input[0], output_dir)
+        except BaseException as e:
+            print(e)
 
 
 # ---- 7. Build clinical trials tables
@@ -149,6 +177,9 @@ rule build_clinical_trial_tables:
         os.path.join(output_dir, 'clinical_trial.csv'),
         os.path.join(output_dir, 'drug_trial.csv')
     run:
-        import PharmacoDI as pdi
-        print("Running rule 7")
-        pdi.build_clinical_trial_tables(output_dir)
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 7")
+            pdi.build_clinical_trial_tables(output_dir)
+        except BaseException as e:
+            print(e)
