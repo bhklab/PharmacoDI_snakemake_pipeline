@@ -24,6 +24,18 @@ meta_tables = ['cell_synonym', 'tissue_synonym', 'drug_synonym', 'target',
                 'drug_trial']
 
 
+pset_to_table_dict = {
+    'GDSC_v1': pset_tables,
+    'GDSC_v2': pset_tables,
+    'CTRPv2': min_tables + ['gene_drug'],
+    'FIMM': min_tables,
+    'gCSI': pset_tables,
+    'GRAY': pset_tables,
+    'CCLE': pset_tables,
+    'UHNBreast': pset_tables
+}
+
+
 if not os.path.exists(pset_dir):
     raise FileNotFoundError(f'The PSet directory {pset_dir} was not found!')
 if not os.path.exists(metadata_dir):
@@ -45,7 +57,9 @@ rule all:
 # TODO will eventually produce error when not all pset tables made
 rule load_psets_to_dicts:
     output:
-        expand("{procdata}/{{pset}}/{{pset}}_{table}.csv", procdata=procdata_dir, table=pset_tables)
+        #expand("{procdata}/{{pset}}/{{pset}}_{table}.csv", procdata=procdata_dir, 
+        #        table=params.tables)
+        os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt')
     run:
         try:
             import PharmacoDI as pdi
@@ -59,17 +73,19 @@ rule load_psets_to_dicts:
 # ---- 2. Merge PSet tables
 rule merge_pset_tables:
     input:
-        expand("{procdata}/{pset}/{pset}_{table}.csv",
-               procdata=procdata_dir, pset=pset_names, table=min_tables),
-        expand("{procdata}/{pset}/{pset}_{table}.csv", procdata=procdata_dir, 
-                pset=['GDSC_v1', 'GDSC_v2', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast'], table=extra_tables),
-        os.path.join(procdata_dir, 'CTRPv2', 'CTRPv2_gene_drug.csv')
+        expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), pset=pset_names)
+        #expand("{procdata}/{pset}/{pset}_{table}.csv",
+        #       procdata=procdata_dir, pset=pset_names, table=min_tables),
+        #expand("{procdata}/{pset}/{pset}_{table}.csv", procdata=procdata_dir, 
+        #        pset=['GDSC_v1', 'GDSC_v2', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast'], table=extra_tables),
+        #os.path.join(procdata_dir, 'CTRPv2', 'CTRPv2_gene_drug.csv')
     output:
         expand("{output}/{table}.csv", output=output_dir, table=pset_tables)
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 2")
+            print(input)
             pdi.combine_all_pset_tables(procdata_dir, output_dir)
         except BaseException as e:
             print(e)
@@ -103,6 +119,7 @@ rule get_chembl_targets:
         os.path.join(metadata_dir, 'chembl_targets.csv')
     output:
         os.path.join(metadata_dir, 'chembl_targets.csv')
+    threads: 16
     run:
         try:
             import PharmacoDI as pdi
@@ -116,16 +133,15 @@ rule get_chembl_drug_targets:
     input:
         drug_annotation_file = os.path.join(output_dir, 'drug_annotation.csv'),
         chembl_target_file = os.path.join(metadata_dir, 'chembl_targets.csv')
-    params:
-        os.path.join(metadata_dir, 'chembl_drug_targets.csv')
     output:
         chembl_drug_target_file = os.path.join(metadata_dir, 'chembl_drug_targets.csv')
+    threads: 16
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 4b")
             pdi.get_chembl_drug_target_mappings(
-                input.drug_annotation_file, input.chembl_target_file, params)
+                input.drug_annotation_file, input.chembl_target_file, output[0])
         except BaseException as e:
             print(e)
         except:
@@ -172,10 +188,11 @@ rule build_cellosaurus:
 # ---- 7. Build clinical trials tables
 rule build_clinical_trial_tables:
     input:
-        os.path.join(output_dir, 'drug.csv')
+        os.path.join(output_dir, 'drug_synonym.csv')
     output:
         os.path.join(output_dir, 'clinical_trial.csv'),
         os.path.join(output_dir, 'drug_trial.csv')
+    threads: 16
     run:
         try:
             import PharmacoDI as pdi
