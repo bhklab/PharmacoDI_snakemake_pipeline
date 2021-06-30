@@ -4,11 +4,11 @@ import PharmacoDI as pdi
 pset_names = ['GDSC_v1', 'GDSC_v2', 'CTRPv2',
               'FIMM', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast']
 
-pset_dir = os.path.join('data', 'rawdata')
-procdata_dir = os.path.join('data', 'procdata')
-output_dir = os.path.join('data', 'latest')
-metadata_dir = os.path.join('data', 'metadata')
-gene_sig_dir = os.path.join('data', 'rawdata', 'gene_signatures')
+pset_dir = 'rawdata'
+procdata_dir = 'procdata'
+output_dir = 'latest'
+metadata_dir = 'metadata'
+gene_sig_dir = os.path.join('rawdata', 'gene_signatures')
 
 
 # 0. Check that all directories exist
@@ -64,7 +64,7 @@ pdi.build_target_tables(drugbank_file, chembl_drug_target_file, output_dir)
 
 
 # 6. Build other metadata tables - cellosaurus, clinical trials, drug trials, oncotrees
-pdi.build_cellosaurus_df(pdi.cellosaurus_path, output_dir)
+pdi.build_cellosaurus_df('metadata/cellosaurus.txt', output_dir)
 pdi.build_clinical_trial_tables(output_dir)
 
 #build_oncotrees_df (TODO)
