@@ -7,3 +7,4 @@ output: 'latest'
 psets: ['GDSC_v1', 'GDSC_v2', 'CTRPv2', 'FIMM', 'gCSI', 'GRAY', 'CCLE', 'UHNBreast']
 db_name: 'pharmacodi_test'
 meta_analysis_dir: 'rawdata/gene_signatures/metaanalysis'
+write_db: false
