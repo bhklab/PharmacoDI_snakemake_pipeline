@@ -1,0 +1,8 @@
+# ignore
+latest/*
+procdata/*
+rawdata/*
+metadata/*
+.snakemake
+
+# exceptions
