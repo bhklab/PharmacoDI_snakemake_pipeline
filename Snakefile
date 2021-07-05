@@ -16,12 +16,12 @@ write_db = config['write_db']
 
 pset_tables = ['gene_annotation', 'gene_compound_tissue_dataset', 'gene', 'mol_cell', 'cell', 
                 'dataset_cell', 'dataset_compound', 'dataset_statistics',
-               'dataset_tissue', 'dataset', 'dose_response', 'compound_annotation', 'compound',
-               'experiment', 'profile', 'tissue']
+                'dataset_tissue', 'dataset', 'dose_response', 'compound_annotation', 'compound',
+                'experiment', 'profile', 'tissue']
 synonym_tables = ['cell_synonym', 'tissue_synonym', 'compound_synonym']
 metaanalysis_tables = ['gene_compound_tissue', 'gene_compound_dataset']
 meta_tables = ['target', 'compound_target', 'gene_target', 'cellosaurus', 'clinical_trial',
-               'compound_trial'] + synonym_tables # + metaanalysis_tables
+                'compound_trial'] + synonym_tables # + metaanalysis_tables
 
 
 if not os.path.exists(pset_dir):
@@ -41,9 +41,9 @@ rule all:
         expand("{output}/{table}.csv", output=output_dir, table=(pset_tables + meta_tables))
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
-        # if write_db:
-        #     setup_database(db_name)
-        #     seed_tables(output_dir)
+        if write_db:
+            setup_database(db_name)
+            seed_tables(output_dir)
 
 
 # ---- 1. Process PSets individually
@@ -194,7 +194,7 @@ rule map_genomic_coordinates_to_gene_annotations:
         gene_annot=os.path.join(output_dir, 'gene_annotation.csv'),
         gencode=os.path.join(metadata_dir, 'Gencode.v33.annotations.csv')
     output:
-        touch(os.path.join(output_dir, 'gene_annotation_is_mapped.done'))
+        touch(os.path.join(output_dir, 'gene_annotations_mapped.done'))
     run:
         try:
             import PharmacoDI as pdi
@@ -205,16 +205,30 @@ rule map_genomic_coordinates_to_gene_annotations:
 
 
 
-# # ---- 9. Build meta analysis tables
-# rule build_meta_analysis_tables:
-#     input:
-#         gct_file = os.path.join(meta_analysis_dir, 'gene_compound_tissue.csv'),
-#         run_mapping_rule=os.path.join(output_dir, 'gene_annotation_is_mapped.done')
-#         # os.path.join(meta_analysis_dir, 'gene_compound_dataset.csv')
-#         # os.path.join(meta_analysis_dir, 'gene_compound.csv')
-#     output:
-#         os.path.join(output_dir, 'gene_compound_tissue.csv')
-#     run:
-#         import PharmacoDI as pdi
-#         print("Running rule 8")
-#         pdi.build_gene_compound_tissue_df(input.gct_file, output_dir)
+# ---- 9. Build meta analysis tables
+rule build_meta_analysis_tables:
+    input:
+        run_mapping_rule=os.path.join(output_dir, 'gene_annotations_mapped.done')
+        gct_file = os.path.join(meta_analysis_dir, 'gene_compound_tissue.csv'),
+        gcd_file = os.path.join(meta_analysis_dirm 'gene_compound_dataset.csv'),
+        # gc_file = os.path.join(meta_analysis_dir, 'gene_compound.csv'),
+        gene_file = os.path.join(output_dir, 'gene.csv'),
+        compound_file = os.path.join(output_dir, 'compound.csv'),
+        tissue_file = os.path.join(output_dir, 'tissue.csv'),
+        dataset_file = os.path.join(output_dir, '')
+    output:
+        os.path.join(output_dir, 'gene_compound_tissue.csv'),
+        os.path.join(output_dir, 'gene_compound_dataset.csv'),
+        touch(os.path.join(output_dir, 'metatables_mapped.done'))
+    run:
+        try:
+            import PharmacoDI as pdi
+            print("Running rule 8")
+            pdi.build_gene_compound_tissue_df(input.gct_file, 
+                gene_file=input.gene_file, compound_file=input.compound_file,
+                tissue_file=input.tissue_file, output_dir=output_dir)
+            pdi.build_gene_compound_dataset_dt(input.gcd_file, 
+                gene_file=input.gene_file, compound_file=input.compound_file,
+                dataset_file=input.dataset_file, output_dir=output_dir)
+        except:
+            print(e)
