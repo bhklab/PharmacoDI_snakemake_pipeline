@@ -199,36 +199,36 @@ rule map_genomic_coordinates_to_gene_annotations:
         try:
             import PharmacoDI as pdi
             print('Mapping to genomic coordinates to gene_annotations')
-            pdi.map_gene_annotations_to_genomic_coordinates(gene, gene_annot, gencode)
+            pdi.map_genes_to_genomic_coordinates(input.gene, 
+                input.gene_annot, input.gencode)
         except BaseException as e:
             print(e)
-
 
 
 # ---- 9. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
-        run_mapping_rule=os.path.join(output_dir, 'gene_annotations_mapped.done')
-        gct_file = os.path.join(meta_analysis_dir, 'gene_compound_tissue.csv'),
-        gcd_file = os.path.join(meta_analysis_dirm 'gene_compound_dataset.csv'),
-        # gc_file = os.path.join(meta_analysis_dir, 'gene_compound.csv'),
+        run_mapping_rule=os.path.join(output_dir, 'gene_annotations_mapped.done'),
+        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.csv'),
+        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.csv'),
         gene_file = os.path.join(output_dir, 'gene.csv'),
         compound_file = os.path.join(output_dir, 'compound.csv'),
         tissue_file = os.path.join(output_dir, 'tissue.csv'),
-        dataset_file = os.path.join(output_dir, '')
+        dataset_file = os.path.join(output_dir, 'dataset.csv')
     output:
         os.path.join(output_dir, 'gene_compound_tissue.csv'),
-        os.path.join(output_dir, 'gene_compound_dataset.csv'),
-        touch(os.path.join(output_dir, 'metatables_mapped.done'))
+        os.path.join(output_dir, 'gene_compound_dataset.csv')
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 8")
+            print('Running gene_compound_tissue_df')
             pdi.build_gene_compound_tissue_df(input.gct_file, 
-                gene_file=input.gene_file, compound_file=input.compound_file,
-                tissue_file=input.tissue_file, output_dir=output_dir)
-            pdi.build_gene_compound_dataset_dt(input.gcd_file, 
-                gene_file=input.gene_file, compound_file=input.compound_file,
-                dataset_file=input.dataset_file, output_dir=output_dir)
+                input.gene_file, input.compound_file,
+                input.tissue_file, output_dir)
+            print('Running gene_compound_dataset_df')
+            pdi.build_gene_compound_dataset_df(input.gcd_file, 
+                input.gene_file, input.compound_file,
+                input.dataset_file, output_dir)
         except:
             print(e)

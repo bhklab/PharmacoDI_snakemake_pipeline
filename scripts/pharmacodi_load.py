@@ -2,7 +2,7 @@ import pymysql
 pymysql.install_as_MySQLdb()
 
 from sqlalchemy import create_engine, Table, Column, Integer, String, Numeric, \
-                    Boolean, ForeignKey, Text, BigInteger
+                    Boolean, ForeignKey, Text, BigInteger, text
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.ext.declarative import declarative_base
 import pandas as pd
@@ -239,7 +239,7 @@ class Gene_Compound_Dataset(Base):
     in_clinical_trials = Column(Boolean)
 
 class Gene_Compound_Tissue(Base):
-    __tablename__ = "gene_compound_dataset"
+    __tablename__ = "gene_compound_tissue"
     id = Column(Integer, primary_key=True)
     gene_id = Column(Integer, ForeignKey('gene.id'), nullable=False)
     compound_id = Column(Integer, ForeignKey('compound.id'), nullable=False)
@@ -331,18 +331,34 @@ class Dataset_Statistics(Base):
     dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
     cell_lines = Column(Integer, nullable=False)
     tissues = Column(Integer, nullable=False)
-    drugs = Column(Integer, nullable=False)
+    compounds = Column(Integer, nullable=False)
     experiments = Column(Integer, nullable=False)
 
 
 
 # ----------- DB FUNCTIONS ---------------------------------------------
 
+def fk_checks(value: int) -> text:
+    """
+    Return command to enable or disable foreign key constraints. Still
+        needs to be executed on the DB connection.
+
+    @param value [`int`] 0 for off 1 for on, otherwise errors.
+
+    @return [`text`] The command to enable or disable foreign key constraints
+    """
+    if not value in (0, 1):
+        raise ValueError("Valid inputs are 0 for off or 1 for on")
+    return text(f"""SET FOREIGN_KEY_CHECKS={value};""")
 
 def setup_database(db_name):
     global engine
     engine = create_engine(f"mysql://root:@localhost/{db_name}", echo = True)
-    Base.metadata.drop_all(engine)
+    with engine.connect() as con:
+        con.execute('commit')
+        con.execute(fk_checks(0))
+        Base.metadata.drop_all(engine)
+        con.execute(fk_checks(1))
     Base.metadata.create_all(engine)
 
 
@@ -374,37 +390,50 @@ def bulk_chunk_insert(file_path, table):
 
 
 def seed_tables(data_dir):
+
+    print('Primary tables')
     # Seed primary tables
     bulk_insert(f'{data_dir}/dataset.csv', Dataset)
     bulk_insert(f'{data_dir}/gene.csv', Gene)
     bulk_insert(f'{data_dir}/tissue.csv', Tissue)
-    bulk_insert(f'{data_dir}/drug.csv', Compound)
+    bulk_insert(f'{data_dir}/compound.csv', Compound)
+
+    print('Annotation tables')
 
     # Seed secondary/annotation tables
     bulk_insert(f'{data_dir}/cell.csv', Cell)
-    bulk_insert(f'{data_dir}/drug_annotation.csv', Compound_Annotation)
+    bulk_insert(f'{data_dir}/compound_annotation.csv', Compound_Annotation)
     bulk_insert(f'{data_dir}/gene_annotation.csv', Gene_Annotation)
     bulk_insert(f'{data_dir}/cellosaurus.csv', Cellosaurus)
+
+    print('Dataset join tables')
 
     # Seed dataset join tables
     bulk_insert(f'{data_dir}/dataset_tissue.csv', Dataset_Tissue)
     bulk_insert(f'{data_dir}/dataset_cell.csv', Dataset_Cell)
     bulk_insert(f'{data_dir}/dataset_compound.csv', Dataset_Compound)
 
+    print('Synonym tables')
+
     # Seed synonym tables
     bulk_insert(f'{data_dir}/tissue_synonym.csv', Tissue_Synonym)
     bulk_insert(f'{data_dir}/cell_synonym.csv', Cell_Synonym)
-    bulk_insert(f'{data_dir}/drug_synonym.csv', Compound_Synonym)
+    bulk_insert(f'{data_dir}/compound_synonym.csv', Compound_Synonym)
+
+    print('Target tables')
 
     # Seed target tables
     bulk_insert(f'{data_dir}/target.csv', Target)
     bulk_insert(f'{data_dir}/gene_target.csv', Gene_Target)
-    bulk_insert(f'{data_dir}/drug_target.csv', Compound_Target)
+    bulk_insert(f'{data_dir}/compound_target.csv', Compound_Target)
 
+    print('Trials and stats tables')
     # Seed trials & stats tables
     bulk_insert(f'{data_dir}/clinical_trial.csv', Clinical_Trial)
-    bulk_insert(f'{data_dir}/drug_trial.csv', Compound_Trial)
+    bulk_insert(f'{data_dir}/compound_trial.csv', Compound_Trial)
     bulk_insert(f'{data_dir}/dataset_statistics.csv', Dataset_Statistics)
+
+    print('Experiment tables')
 
     # Seed experiment tables
     bulk_chunk_insert(f'{data_dir}/experiment.csv', Experiment)
