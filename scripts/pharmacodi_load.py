@@ -7,6 +7,25 @@ from sqlalchemy.orm import Session, relationship
 from sqlalchemy.ext.declarative import declarative_base
 import pandas as pd
 
+# -- Progress bar
+from tqdm import tqdm
+import subprocess # to use shell to check number of rows
+
+# -- Enable logging
+from loguru import logger
+import sys
+import os
+import math
+
+logger_config = {
+    "handlers": [
+        {"sink": sys.stdout, "colorize": True, "format": 
+            "<green>{time}</green> <level>{message}</level>"},
+        {"sink": f"logs/build_meta_tables.log", "serialize": True},
+    ],
+    "extra": {"user": "someone"}
+}
+logger.configure(**logger_config)
 
 Base = declarative_base()
 engine = None
@@ -338,6 +357,7 @@ class Dataset_Statistics(Base):
 
 # ----------- DB FUNCTIONS ---------------------------------------------
 
+@logger.catch
 def fk_checks(value: int) -> text:
     """
     Return command to enable or disable foreign key constraints. Still
@@ -351,100 +371,133 @@ def fk_checks(value: int) -> text:
         raise ValueError("Valid inputs are 0 for off or 1 for on")
     return text(f"""SET FOREIGN_KEY_CHECKS={value};""")
 
+@logger.catch
 def setup_database(db_name):
+    logger.info('Setting up database...\n')
     global engine
-    engine = create_engine(f"mysql://root:@localhost/{db_name}", echo = True)
+    engine = create_engine(f"mysql://root:@localhost/{db_name}", echo = False)
     with engine.connect() as con:
         con.execute('commit')
         con.execute(fk_checks(0))
         Base.metadata.drop_all(engine)
+        con.execute('commit')
         con.execute(fk_checks(1))
     Base.metadata.create_all(engine)
+    logger.info('Setting up database... DONE\n')
 
 
+@logger.catch
 def create_records(df):
     """ Prepare a Pandas dataframe for insertion into a MySQL DB """
     df = df.where(pd.notnull(df), None)
     df = df.rename(columns={'drug_id': 'compound_id', 'drug_name': 'compound_name'})
     return df.to_dict('records')
 
-
+@logger.catch
 def bulk_insert(file_path, table):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}...\n')
     df = pd.read_csv(file_path)
     row_dict = create_records(df)
     session = Session(bind=engine)
     session.bulk_insert_mappings(table, row_dict)
     session.commit()
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE\n')
 
+# helper to determine rows in a csv files
+@logger.catch
+def count_lines(filename):
+    """Count lines in a file cross platform"""
+    out = subprocess.Popen(
+        ['wc', '-l', filename],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+        ).communicate()[0]
+    return int(out.partition(b' ')[0])
 
+@logger.catch
 # TODO: make this quiet
-def bulk_chunk_insert(file_path, table):
+def bulk_chunk_insert(file_path, table, chunksize=100000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}...\n')
     session = Session(bind=engine)
-    reader = pd.read_csv(file_path, chunksize=100000)
-    for df in reader:
+    csv_nrows = count_lines(file_path)
+    nchunks = math.ceiling(csv_nrows / chunksize)
+    reader = pd.read_csv(file_path, chunksize=chunksize, iterator=True)
+    for df in tqdm(reader, total=nchunks, colour='purple', dynamic_ncols=True):
         row_dict = create_records(df)
         session.bulk_insert_mappings(table, row_dict)
         session.commit()
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE!\n')
 
 
+@logger.catch
 def seed_tables(data_dir):
 
-    print('Primary tables')
-    # Seed primary tables
+    logger.info("Loading primary tables...")
     bulk_insert(f'{data_dir}/dataset.csv', Dataset)
     bulk_insert(f'{data_dir}/gene.csv', Gene)
     bulk_insert(f'{data_dir}/tissue.csv', Tissue)
     bulk_insert(f'{data_dir}/compound.csv', Compound)
+    logger.info("Loading primary tables... DONE!\n")
 
-    print('Annotation tables')
 
+    logger.info('Loading annotation tables...')
     # Seed secondary/annotation tables
     bulk_insert(f'{data_dir}/cell.csv', Cell)
     bulk_insert(f'{data_dir}/compound_annotation.csv', Compound_Annotation)
     bulk_insert(f'{data_dir}/gene_annotation.csv', Gene_Annotation)
     bulk_insert(f'{data_dir}/cellosaurus.csv', Cellosaurus)
+    logger.info('Loading annotation tables... DONE!\n')
 
-    print('Dataset join tables')
 
+    logger.info('Loading join tables...')
     # Seed dataset join tables
     bulk_insert(f'{data_dir}/dataset_tissue.csv', Dataset_Tissue)
     bulk_insert(f'{data_dir}/dataset_cell.csv', Dataset_Cell)
     bulk_insert(f'{data_dir}/dataset_compound.csv', Dataset_Compound)
-
-    print('Synonym tables')
-
+    logger.info('Loading join tables... DONE!\n')
+    
+    logger.info('Loading synonym tables...')
     # Seed synonym tables
     bulk_insert(f'{data_dir}/tissue_synonym.csv', Tissue_Synonym)
     bulk_insert(f'{data_dir}/cell_synonym.csv', Cell_Synonym)
     bulk_insert(f'{data_dir}/compound_synonym.csv', Compound_Synonym)
+    logger.info('Loading synonym tables... DONE\n')
 
-    print('Target tables')
-
+    logger.info('Loading target tables...')
     # Seed target tables
     bulk_insert(f'{data_dir}/target.csv', Target)
     bulk_insert(f'{data_dir}/gene_target.csv', Gene_Target)
     bulk_insert(f'{data_dir}/compound_target.csv', Compound_Target)
+    logger.info('Loading target tables... DONE!\n')
 
-    print('Trials and stats tables')
+
+    logger.info('Loading trials and stats tables...')
     # Seed trials & stats tables
     bulk_insert(f'{data_dir}/clinical_trial.csv', Clinical_Trial)
     bulk_insert(f'{data_dir}/compound_trial.csv', Compound_Trial)
     bulk_insert(f'{data_dir}/dataset_statistics.csv', Dataset_Statistics)
+    logger.info('Loading trials and stats tables... DONE!\n')
 
-    print('Experiment tables')
 
+    logger.info('Experiment tables... ')
     # Seed experiment tables
     bulk_chunk_insert(f'{data_dir}/experiment.csv', Experiment)
     bulk_chunk_insert(f'{data_dir}/dose_response.csv', Dose_Response)
     bulk_insert(f'{data_dir}/mol_cell.csv', Mol_Cell)
     bulk_chunk_insert(f'{data_dir}/profile.csv', Profile)
-    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue_dataset.csv', 
-        Gene_Compound_Tissue_Dataset)
+    logger.info('Experiment tables... DONE!\n')
+
+
+    logger.info('Building gene_compound_* tables...')
     bulk_chunk_insert(f'{data_dir}/gene_compound_tissue.csv',
         Gene_Compound_Tissue)
     bulk_chunk_insert(f'{data_dir}/gene_compound_dataset.csv',
         Gene_Compound_Dataset)
+    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue_dataset.csv', 
+        Gene_Compound_Tissue_Dataset)
     # bulk_chunk_insert(f'{data_dir}/gene_compound.csv',
     #     Gene_Compound)
+    logger.info('Building gene_compound_* tables... DONE!\n')
+    logger.info('\n\nDONE LOADING DATABASE TABLES!')
