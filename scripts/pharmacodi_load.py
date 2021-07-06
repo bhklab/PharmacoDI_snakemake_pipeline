@@ -21,9 +21,11 @@ logger_config = {
     "handlers": [
         {"sink": sys.stdout, "colorize": True, "format": 
             "<green>{time}</green> <level>{message}</level>"},
-        {"sink": f"logs/build_meta_tables.log", "serialize": True},
-    ],
-    "extra": {"user": "someone"}
+        {"sink": f"logs/build_meta_tables.log", 
+            "serialize": True, # make the output into JSON strings
+            "reset": True, # deletes old logs on new run
+            "enqueue": True}, # pushes logs to que, non-blocking and thread-safe
+    ]
 }
 logger.configure(**logger_config)
 
@@ -373,11 +375,13 @@ def fk_checks(value: int) -> text:
 
 @logger.catch
 def setup_database(db_name):
-    logger.info('Setting up database...\n')
+    logger.info('Setting up database...')
     global engine
     engine = create_engine(f"mysql://root:@localhost/{db_name}", echo = False)
     with engine.connect() as con:
-        con.execute('commit')
+        # doing 'commit' before a command makes the next one execute 
+        #>non-transactionally
+        con.execute('commit') 
         con.execute(fk_checks(0))
         Base.metadata.drop_all(engine)
         con.execute('commit')
@@ -396,7 +400,7 @@ def create_records(df):
 @logger.catch
 def bulk_insert(file_path, table):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
-    logger.info(f'\tInserting data from {os.path.basename(file_path)}...\n')
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     df = pd.read_csv(file_path)
     row_dict = create_records(df)
     session = Session(bind=engine)
@@ -419,7 +423,7 @@ def count_lines(filename):
 # TODO: make this quiet
 def bulk_chunk_insert(file_path, table, chunksize=100000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
-    logger.info(f'\tInserting data from {os.path.basename(file_path)}...\n')
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
     csv_nrows = count_lines(file_path)
     nchunks = math.ceiling(csv_nrows / chunksize)
