@@ -21,13 +21,13 @@ logger_config = {
     "handlers": [
         {"sink": sys.stdout, "colorize": True, "format": 
             "<green>{time}</green> <level>{message}</level>"},
-        {"sink": f"logs/build_meta_tables.log", 
+        {"sink": f"logs/pharmacodi_load.log",
             "serialize": True, # make the output into JSON strings
-            "reset": True, # deletes old logs on new run
             "enqueue": True}, # pushes logs to que, non-blocking and thread-safe
     ]
 }
 logger.configure(**logger_config)
+logger.info('\n\nNew DB Write!\n\n')
 
 Base = declarative_base()
 engine = None
@@ -374,10 +374,10 @@ def fk_checks(value: int) -> text:
     return text(f"""SET FOREIGN_KEY_CHECKS={value};""")
 
 @logger.catch
-def setup_database(db_name):
+def setup_database(user, password, db_name):
     logger.info('Setting up database...')
     global engine
-    engine = create_engine(f"mysql://root:@localhost/{db_name}", echo = False)
+    engine = create_engine(f"mysql://{user}:{password}@localhost/{db_name}", echo = False)
     with engine.connect() as con:
         # doing 'commit' before a command makes the next one execute 
         #>non-transactionally
@@ -426,9 +426,9 @@ def bulk_chunk_insert(file_path, table, chunksize=100000):
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
     csv_nrows = count_lines(file_path)
-    nchunks = math.ceiling(csv_nrows / chunksize)
+    nchunks = math.ceil(csv_nrows / chunksize)
     reader = pd.read_csv(file_path, chunksize=chunksize, iterator=True)
-    for df in tqdm(reader, total=nchunks, colour='purple', dynamic_ncols=True):
+    for df in tqdm(reader, total=nchunks, colour='magenta', dynamic_ncols=True):
         row_dict = create_records(df)
         session.bulk_insert_mappings(table, row_dict)
         session.commit()

@@ -38,12 +38,13 @@ if not os.path.exists(gene_sig_dir):
 # Best practices: https://snakemake.readthedocs.io/en/stable/tutorial/basics.html#step-7-adding-a-target-rule
 rule all:
     input:
-        expand("{output}/{table}.csv", output=output_dir, table=(pset_tables + meta_tables)),
-        os.path.join(output_dir, 'gene_compound_dataset.csv')
+        expand("{output}/{table}.csv", output=output_dir, table=(pset_tables + meta_tables))
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
+        user = os.environ.get('MYSQL_USER')
+        password = os.environ.get('MYSQL_PASS')
         if write_db:
-            setup_database(db_name)
+            setup_database(user, password, db_name)
             seed_tables(output_dir)
 
 
