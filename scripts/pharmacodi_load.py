@@ -1,4 +1,5 @@
 import pymysql
+from sqlalchemy.sql.sqltypes import SmallInteger
 pymysql.install_as_MySQLdb()
 
 from sqlalchemy import create_engine, Table, Column, Integer, String, Numeric, \
@@ -216,24 +217,24 @@ class Gene_Compound_Tissue_Dataset(Base):
     dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
     tissue_id = Column(Integer, ForeignKey('tissue.id'), nullable=False)
     estimate = Column(Numeric(precision=64, scale=16))
-    lower = Column(Numeric(precision=64, scale=16))
-    upper = Column(Numeric(precision=64, scale=16))
-    n = Column(Integer)
-    tstat = Column(Numeric(precision=64, scale=16))
-    fstat = Column(Numeric(precision=64, scale=16))
-    pvalue = Column(Numeric(precision=64, scale=16))
-    df = Column(Integer)
-    fdr = Column(Numeric(precision=64, scale=16))
-    FWER_gene = Column(Numeric(precision=64, scale=16))
-    FWER_compound = Column(Numeric(precision=64, scale=16))
-    FWER_all = Column(Numeric(precision=64, scale=16))
-    BF_p_all = Column(Numeric(precision=64, scale=16))
+    lower_analytic = Column(Numeric(precision=64, scale=16))
+    upper_analytic = Column(Numeric(precision=64, scale=16))
+    lower_permutation = Column(Numeric(precision=64, scale=16))
+    upper_permutation = Column(Numeric(precision=64, scale=16))
+    n = Column(Integer, nullable=False)
+    pvalue_analytic = Column(Numeric(precision=64, scale=16))
+    pvalue_permutation = Column(Numeric(precision=64, scale=16))
+    df = Column(Integer, nullable=False)
+    fdr_analytic = Column(Numeric(precision=64, scale=16))
+    fdr_permutation = Column(Numeric(precision=64, scale=16))
+    significant_permutation = Column(SmallInteger)
+    permutation_done = Column(SmallInteger)
     sens_stat = Column(String(50))
     mDataType = Column(String(50))
-    tested_in_human_trials = Column(Boolean)
-    in_clinical_trials = Column(Boolean)
+
 
 # ---------- META-ANALYSIS TABLES--------------------------------
+
 
 class Gene_Compound_Dataset(Base):
     __tablename__ = "gene_compound_dataset"
@@ -242,22 +243,20 @@ class Gene_Compound_Dataset(Base):
     compound_id = Column(Integer, ForeignKey('compound.id'), nullable=False)
     dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
     estimate = Column(Numeric(precision=64, scale=16))
-    lower = Column(Numeric(precision=64, scale=16))
-    upper = Column(Numeric(precision=64, scale=16))
-    n = Column(Integer)
-    tstat = Column(Numeric(precision=64, scale=16))
-    fstat = Column(Numeric(precision=64, scale=16))
-    pvalue = Column(Numeric(precision=64, scale=16))
-    df = Column(Integer)
-    fdr = Column(Numeric(precision=64, scale=16))
-    FWER_gene = Column(Numeric(precision=64, scale=16))
-    FWER_compound = Column(Numeric(precision=64, scale=16))
-    FWER_all = Column(Numeric(precision=64, scale=16))
-    BF_p_all = Column(Numeric(precision=64, scale=16))
+    lower_analytic = Column(Numeric(precision=64, scale=16))
+    upper_analytic = Column(Numeric(precision=64, scale=16))
+    lower_permutation = Column(Numeric(precision=64, scale=16))
+    upper_permutation = Column(Numeric(precision=64, scale=16))
+    n = Column(Integer, nullable=False)
+    pvalue_analytic = Column(Numeric(precision=64, scale=16))
+    pvalue_permutation = Column(Numeric(precision=64, scale=16))
+    df = Column(Integer, nullable=False)
+    fdr_analytic = Column(Numeric(precision=64, scale=16))
+    fdr_permutation = Column(Numeric(precision=64, scale=16))
+    significant_permutation = Column(SmallInteger)
+    permutation_done = Column(SmallInteger)
     sens_stat = Column(String(50))
     mDataType = Column(String(50))
-    tested_in_human_trials = Column(Boolean)
-    in_clinical_trials = Column(Boolean)
 
 class Gene_Compound_Tissue(Base):
     __tablename__ = "gene_compound_tissue"
