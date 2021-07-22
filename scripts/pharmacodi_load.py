@@ -258,6 +258,7 @@ class Gene_Compound_Dataset(Base):
     sens_stat = Column(String(50))
     mDataType = Column(String(50))
 
+
 class Gene_Compound_Tissue(Base):
     __tablename__ = "gene_compound_tissue"
     id = Column(Integer, primary_key=True)
