@@ -82,11 +82,11 @@ rule merge_pset_tables:
 # ---- 3. Build synonym tables
 rule build_synonym_tables:
     input:
-        expand("{output}/{table}.csv", output=output_dir, table=['cell', 'compound', 'tissue']),
+        expand("{output}/{table}.jay", output=output_dir, table=['cell', 'compound', 'tissue']),
         cell_meta_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
         drug_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
-        expand("{output}/{table}.csv", output=output_dir, table=synonym_tables)
+        expand("{output}/{table}.jay", output=output_dir, table=synonym_tables)
     run:
         try:
             import PharmacoDI as pdi
