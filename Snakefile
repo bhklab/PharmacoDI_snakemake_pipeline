@@ -84,7 +84,7 @@ rule build_synonym_tables:
     input:
         expand("{output}/{table}.jay", output=output_dir, table=['cell', 'compound', 'tissue']),
         cell_meta_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
-        drug_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
+        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
         expand("{output}/{table}.jay", output=output_dir, table=synonym_tables)
     run:
@@ -93,7 +93,7 @@ rule build_synonym_tables:
             print("Running rule 3")
             pdi.build_cell_synonym_df(input.cell_meta_file, output_dir)
             pdi.build_tissue_synonym_df(input.cell_meta_file, output_dir)
-            pdi.build_compound_synonym_df(input.drug_meta_file, output_dir)
+            pdi.build_compound_synonym_df(input.compound_meta_file, output_dir)
         except BaseException as e:
             print(e)
             
