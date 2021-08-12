@@ -56,26 +56,25 @@ rule build_pset_tables:
         try:
             import PharmacoDI as pdi
             print("Running rule 1")
-            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(wildcards.pset, pset_dir))
+            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(pset, pset_dir))
             pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, gene_sig_dir)
         except BaseException as e:
             print(e)
-
 
 
 # ---- 2. Merge PSet tables
 rule merge_pset_tables:
     input:
         expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), pset=pset_names),
-        drug_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
+        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
-        expand("{output}/{table}.csv", output=output_dir, table=pset_tables)
+        expand("{output}/{table}.jay", output=output_dir, table=pset_tables)
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 2")
             print(input)
-            pdi.combine_all_pset_tables(procdata_dir, output_dir, input.drug_meta_file)
+            pdi.combine_all_pset_tables(procdata_dir, output_dir, input.compound_meta_file)
         except BaseException as e:
             print(e)
 
@@ -206,20 +205,37 @@ rule map_genomic_coordinates_to_gene_annotations:
         except BaseException as e:
             print(e)
 
+# ---- 9. Convert meta analysis tables to .jay format
+rule convert_meta_analysis_tables:
+    input:
+        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.parquet'),
+        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.parquet')
+    output:
+        os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'),
+        os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay')
+    run:
+        import datatable as dt
+        import pandas as pd
+        for i in range(len(input)):
+            df = dt.Frame(pd.read_parquet(input[i]))
+            df.to_jay(output[i])
+            del df
+        
 
-# ---- 9. Build meta analysis tables
+
+# ---- 10. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
         run_mapping_rule=os.path.join(output_dir, 'gene_annotations_mapped.done'),
-        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.csv'),
-        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.csv'),
-        gene_file = os.path.join(output_dir, 'gene.csv'),
-        compound_file = os.path.join(output_dir, 'compound.csv'),
-        tissue_file = os.path.join(output_dir, 'tissue.csv'),
-        dataset_file = os.path.join(output_dir, 'dataset.csv')
+        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'),
+        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay'),
+        gene_file = os.path.join(output_dir, 'gene.jay'),
+        compound_file = os.path.join(output_dir, 'compound.jay'),
+        tissue_file = os.path.join(output_dir, 'tissue.jay'),
+        dataset_file = os.path.join(output_dir, 'dataset.jay')
     output:
-        os.path.join(output_dir, 'gene_compound_tissue.csv'),
-        os.path.join(output_dir, 'gene_compound_dataset.csv')
+        os.path.join(output_dir, 'gene_compound_tissue.jay'),
+        os.path.join(output_dir, 'gene_compound_dataset.jay')
     run:
         try:
             import PharmacoDI as pdi
