@@ -181,10 +181,10 @@ rule build_cellosaurus:
 # ---- 7. Build clinical trials tables
 rule build_clinical_trial_tables:
     input:
-        os.path.join(output_dir, 'compound_synonym.csv')
+        os.path.join(output_dir, 'compound_synonym.jay')
     output:
-        os.path.join(output_dir, 'clinical_trial.csv'),
-        os.path.join(output_dir, 'compound_trial.csv')
+        os.path.join(output_dir, 'clinical_trial.jay'),
+        os.path.join(output_dir, 'compound_trial.jay')
     threads: 16
     run:
         try:
