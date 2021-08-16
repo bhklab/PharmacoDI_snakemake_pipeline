@@ -117,7 +117,7 @@ rule get_chembl_targets:
 
 rule get_chembl_compound_targets:
     input:
-        drug_annotation_file = os.path.join(output_dir, 'compound_annotation.csv'),
+        compound_annotation_file = os.path.join(output_dir, 'compound_annotation.jay'),
         chembl_target_file = os.path.join(metadata_dir, 'chembl_targets.csv')
     output:
         chembl_compound_target_file = os.path.join(metadata_dir, 'chembl_compound_targets.csv')
@@ -127,7 +127,10 @@ rule get_chembl_compound_targets:
             import PharmacoDI as pdi
             print("Running rule 4b")
             pdi.get_chembl_compound_target_mappings(
-                input.drug_annotation_file, input.chembl_target_file, output.chembl_compound_target_file)
+                input.compound_annotation_file, 
+                input.chembl_target_file, 
+                output.chembl_compound_target_file
+                )
         except BaseException as e:
             print(e)
         except:
@@ -138,19 +141,23 @@ rule get_chembl_compound_targets:
 # ---- 5. Build target and drug target tables
 rule build_target_tables:
     input:
-        os.path.join(output_dir, 'gene.csv'),
-        compound_synonym_file = os.path.join(output_dir, 'compound_synonym.csv'),
+        os.path.join(output_dir, 'gene.jay'),
+        compound_synonym_file = os.path.join(output_dir, 'compound_synonym.jay'),
         chembl_compound_target_file = os.path.join(metadata_dir, 'chembl_compound_targets.csv'),
         drugbank_file = os.path.join(metadata_dir, "drugbank_targets_has_ref_has_uniprot.csv")
     output:
-        os.path.join(output_dir, 'target.csv'),
-        os.path.join(output_dir, 'compound_target.csv'),
-        os.path.join(output_dir, 'gene_target.csv')
+        os.path.join(output_dir, 'target.jay'),
+        os.path.join(output_dir, 'compound_target.jay'),
+        os.path.join(output_dir, 'gene_target.jay')
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 5")
-            pdi.build_target_tables(input.drugbank_file, input.chembl_compound_target_file, output_dir, input.compound_synonym_file)
+            pdi.build_target_tables(
+                input.drugbank_file, 
+                input.chembl_compound_target_file, 
+                output_dir, 
+                input.compound_synonym_file)
         except BaseException as e:
             print(e)
 
@@ -159,9 +166,9 @@ rule build_target_tables:
 rule build_cellosaurus:
     input:
         os.path.join(metadata_dir, 'cellosaurus.txt'),
-        os.path.join(output_dir, 'cell.csv')
+        os.path.join(output_dir, 'cell.jay')
     output:
-        os.path.join(output_dir, 'cellosaurus.csv')
+        os.path.join(output_dir, 'cellosaurus.jay')
     run:
         try:
             import PharmacoDI as pdi
