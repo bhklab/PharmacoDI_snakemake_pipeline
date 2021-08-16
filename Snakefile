@@ -198,8 +198,8 @@ rule build_clinical_trial_tables:
 # ---- 8. Map genomic coordinates to gene annotations table
 rule map_genomic_coordinates_to_gene_annotations:
     input:
-        gene=os.path.join(output_dir, 'gene.csv'),
-        gene_annot=os.path.join(output_dir, 'gene_annotation.csv'),
+        gene=os.path.join(output_dir, 'gene.jay'),
+        gene_annot=os.path.join(output_dir, 'gene_annotation.jay'),
         gencode=os.path.join(metadata_dir, 'Gencode.v33.annotations.csv')
     output:
         touch(os.path.join(output_dir, 'gene_annotations_mapped.done'))
@@ -211,6 +211,7 @@ rule map_genomic_coordinates_to_gene_annotations:
                 input.gene_annot, input.gencode)
         except BaseException as e:
             print(e)
+
 
 # ---- 9. Convert meta analysis tables to .jay format
 rule convert_meta_analysis_tables:
@@ -229,7 +230,6 @@ rule convert_meta_analysis_tables:
             del df
         
 
-
 # ---- 10. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
@@ -246,7 +246,7 @@ rule build_meta_analysis_tables:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 8")
+            print("Running rule 10")
             print('Running gene_compound_tissue_df')
             pdi.build_gene_compound_tissue_df(input.gct_file, 
                 input.gene_file, input.compound_file,
