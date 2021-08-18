@@ -1,5 +1,6 @@
 import os
 import sys
+import yaml
 
 configfile: 'config.yaml'
 
@@ -56,7 +57,8 @@ rule build_pset_tables:
         try:
             import PharmacoDI as pdi
             print("Running rule 1")
-            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(pset, pset_dir))
+            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(wildcards.pset, pset_dir))
+            print('PSet dict built')
             pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, gene_sig_dir)
         except BaseException as e:
             print(e)
@@ -216,8 +218,12 @@ rule map_genomic_coordinates_to_gene_annotations:
 # ---- 9. Convert meta analysis tables to .jay format
 rule convert_meta_analysis_tables:
     input:
-        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.parquet'),
-        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.parquet')
+        gct_file=os.path.join(
+            'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.parquet'
+            ),
+        gcd_file=os.path.join(
+            'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.parquet'
+            )
     output:
         os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'),
         os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay')
@@ -233,9 +239,16 @@ rule convert_meta_analysis_tables:
 # ---- 10. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
-        run_mapping_rule=os.path.join(output_dir, 'gene_annotations_mapped.done'),
-        gct_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'),
-        gcd_file=os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay'),
+        run_mapping_rule=os.path.join(
+            output_dir, 
+            'gene_annotations_mapped.done'
+            ),
+        gene_compound_tissue_file=os.path.join(
+            'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'
+            ),
+        gene_compound_dataset_file=os.path.join(
+            'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay'
+            ),
         gene_file = os.path.join(output_dir, 'gene.jay'),
         compound_file = os.path.join(output_dir, 'compound.jay'),
         tissue_file = os.path.join(output_dir, 'tissue.jay'),
@@ -248,11 +261,14 @@ rule build_meta_analysis_tables:
             import PharmacoDI as pdi
             print("Running rule 10")
             print('Running gene_compound_tissue_df')
-            pdi.build_gene_compound_tissue_df(input.gct_file, 
+            pdi.build_gene_compound_tissue_df(
+                input.gene_compound_tissue_file, 
                 input.gene_file, input.compound_file,
-                input.tissue_file, output_dir)
+                input.tissue_file, output_dir
+                )
             print('Running gene_compound_dataset_df')
-            pdi.build_gene_compound_dataset_df(input.gcd_file, 
+            pdi.build_gene_compound_dataset_df(
+                input.gene_compound_dataset_file, 
                 input.gene_file, input.compound_file,
                 input.dataset_file, output_dir)
         except:
