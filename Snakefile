@@ -15,14 +15,16 @@ meta_analysis_dir = config['meta_analysis_dir']
 write_db = config['write_db']
 
 
-pset_tables = ['gene_annotation', 'gene_compound_tissue_dataset', 'gene', 'mol_cell', 'cell', 
-                'dataset_cell', 'dataset_compound', 'dataset_statistics',
-                'dataset_tissue', 'dataset', 'dose_response', 'compound_annotation', 'compound',
-                'experiment', 'profile', 'tissue']
+pset_tables = [
+    'gene_annotation', 'gene_compound_tissue_dataset', 'gene', 
+    'mol_cell', 'cell', 'dataset_cell', 'dataset_compound', 
+    'dataset_statistics', 'dataset_tissue', 'dataset', 'dose_response', 
+    'compound_annotation', 'compound', 'experiment', 'profile', 'tissue'
+    ]
 synonym_tables = ['cell_synonym', 'tissue_synonym', 'compound_synonym']
 metaanalysis_tables = ['gene_compound_tissue', 'gene_compound_dataset']
-meta_tables = ['target', 'compound_target', 'gene_target', 'cellosaurus', 'clinical_trial',
-                'compound_trial'] + synonym_tables # + metaanalysis_tables
+meta_tables = ['target', 'compound_target', 'gene_target', 'cellosaurus', 
+    'clinical_trial', 'compound_trial'] + synonym_tables + metaanalysis_tables
 
 
 if not os.path.exists(pset_dir):
@@ -39,7 +41,8 @@ if not os.path.exists(gene_sig_dir):
 # Best practices: https://snakemake.readthedocs.io/en/stable/tutorial/basics.html#step-7-adding-a-target-rule
 rule all:
     input:
-        expand("{output}/{table}.csv", output=output_dir, table=(pset_tables + meta_tables))
+        expand("{output}/{table}.csv", output=output_dir, 
+            table=(pset_tables + meta_tables))
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
         user = os.environ.get('MYSQL_USER')
@@ -57,9 +60,12 @@ rule build_pset_tables:
         try:
             import PharmacoDI as pdi
             print("Running rule 1")
-            pset_dict = pdi.pset_df_to_nested_dict(pdi.read_pset(wildcards.pset, pset_dir))
+            pset_dict = pdi.pset_df_to_nested_dict(
+                pdi.read_pset(wildcards.pset, pset_dir)
+                )
             print('PSet dict built')
-            pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, gene_sig_dir)
+            pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, 
+                gene_sig_dir)
         except BaseException as e:
             print(e)
 
@@ -67,7 +73,8 @@ rule build_pset_tables:
 # ---- 2. Merge PSet tables
 rule merge_pset_tables:
     input:
-        expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), pset=pset_names),
+        expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), 
+            pset=pset_names),
         compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
         expand("{output}/{table}.jay", output=output_dir, table=pset_tables)
@@ -76,7 +83,8 @@ rule merge_pset_tables:
             import PharmacoDI as pdi
             print("Running rule 2")
             print(input)
-            pdi.combine_all_pset_tables(procdata_dir, output_dir, input.compound_meta_file)
+            pdi.combine_all_pset_tables(procdata_dir, output_dir, 
+                input.compound_meta_file)
         except BaseException as e:
             print(e)
 
@@ -84,7 +92,8 @@ rule merge_pset_tables:
 # ---- 3. Build synonym tables
 rule build_synonym_tables:
     input:
-        expand("{output}/{table}.jay", output=output_dir, table=['cell', 'compound', 'tissue']),
+        expand("{output}/{table}.jay", output=output_dir, 
+            table=['cell', 'compound', 'tissue']),
         cell_meta_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
         compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
@@ -222,7 +231,7 @@ rule convert_meta_analysis_tables:
             'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.parquet'
             ),
         gcd_file=os.path.join(
-            'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.parquet'
+            'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.csv'
             )
     output:
         os.path.join('rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'),
@@ -231,7 +240,11 @@ rule convert_meta_analysis_tables:
         import datatable as dt
         import pandas as pd
         for i in range(len(input)):
-            df = dt.Frame(pd.read_parquet(input[i]))
+            if '.csv' in input[i]:
+                df = dt.Frame(input[i], memory_limit=100000000000)
+            else:
+                df = dt.Frame(pd.read_parquet(input[i]), 
+                    memory_limit=100000000000)
             df.to_jay(output[i])
             del df
         
