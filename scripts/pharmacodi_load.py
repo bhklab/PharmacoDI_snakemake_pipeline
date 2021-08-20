@@ -357,7 +357,14 @@ class Dataset_Statistics(Base):
     experiments = Column(Integer, nullable=False)
 
 
-
+df = pd.read_sql_query(
+    "SELECT g.name as 'gene_name', c.name as 'compound_name', t.name as 'tissue_name', gene_id, gct.* "
+    "FROM gene_compound_tissue as gct " 
+    "JOIN gene as g ON g.id = gct.gene_id " 
+    "JOIN compound as c ON c.id = gct.compound_id " 
+    "JOIN tissue as t ON t.id = gct.tissue_id;",
+    engine
+    )
 # ----------- DB FUNCTIONS ---------------------------------------------
 
 @logger.catch

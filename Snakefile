@@ -103,6 +103,7 @@ rule merge_pset_tables:
         except BaseException as e:
             print(e)
 
+
 # ---- 4. Map foreign keys to gene_compound_tissue_datset table
 rule map_fk_to_gct_df:
     input:
@@ -110,6 +111,7 @@ rule map_fk_to_gct_df:
     output:
         touch(os.path.join(output_dir, 'gct_mapped_to_fk.done'))
     
+
 
 # ---- 5. Build synonym tables
 rule build_synonym_tables:
@@ -175,9 +177,15 @@ rule get_chembl_compound_targets:
 rule build_target_tables:
     input:
         os.path.join(output_dir, 'gene.jay'),
-        compound_synonym_file = os.path.join(output_dir, 'compound_synonym.jay'),
-        chembl_compound_target_file = os.path.join(metadata_dir, 'chembl_compound_targets.csv'),
-        drugbank_file = os.path.join(metadata_dir, "drugbank_targets_has_ref_has_uniprot.csv")
+        compound_synonym_file = os.path.join(
+            output_dir, 'compound_synonym.jay'
+        ),
+        chembl_compound_target_file = os.path.join(
+            metadata_dir, 'chembl_compound_targets.csv'
+        ),
+        drugbank_file = os.path.join(
+            metadata_dir, "drugbank_targets_has_ref_has_uniprot.csv"
+        )
     output:
         os.path.join(output_dir, 'target.jay'),
         os.path.join(output_dir, 'compound_target.jay'),
@@ -250,7 +258,7 @@ rule map_genomic_coordinates_to_gene_annotations:
 rule convert_meta_analysis_tables:
     input:
         gct_file=os.path.join(
-            'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.parquet'
+            'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.csv'
             ),
         gcd_file=os.path.join(
             'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.csv'
@@ -263,17 +271,43 @@ rule convert_meta_analysis_tables:
         import pandas as pd
         for i in range(len(input)):
             if '.csv' in input[i]:
-                df = dt.Frame(input[i], memory_limit=int(60e10))
+                df = dt.fread(input[i], memory_limit=int(60e10))
             else:
-                df = dt.Frame(pd.read_parquet(input[i]), 
-                    memory_limit=int(60e10))
+                df = dt.Frame(pd.read_parquet(input[i]))
             df.to_jay(output[i])
             del df
         
 
+
+# ---- Add cell_uid to cell
+rule add_cell_uid_to_cell:
+    input:
+        cell=os.path.join(output_dir, 'cell.jay'),
+        metadata=os.path.join(metadata_dir, 'cell_annotation_all.csv')
+    output:
+        touch(os.path.join(output_dir, 'cell_annotated.done'))
+    run:
+        from datatable import dt, fread, f, g, join, update
+        import numpy as np
+        cell_df = fread(input.cell)
+        meta_df = fread(input.metadata)
+        cell_uid = meta_df[
+            np.isin(meta_df['unique.cellid'].to_numpy(), cell_df['name'].to_numpy()),
+            ['unique.cellid', 'PharmacoDB.id']
+        ]
+        cell_uid.names = {'unique.cellid': 'name', 'PharmacoDB.id': 'cell_uid'}
+        cell_uid.key = 'name'
+        cell_df[:, update(cell_uid=g.cell_uid), join(cell_uid)]
+        cell_df.to_jay(os.path.join(output_dir, 'cell.jay'))
+
+
 # ---- 10. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
+        run_cell_annotation_rule=os.path.join(
+            output_dir,
+            'cell_annotation.done'
+        )
         run_mapping_rule=os.path.join(
             output_dir, 
             'gene_annotations_mapped.done'
@@ -294,7 +328,6 @@ rule build_meta_analysis_tables:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 10")
             print('Running gene_compound_tissue_df')
             pdi.build_gene_compound_tissue_df(
                 input.gene_compound_tissue_file, 
