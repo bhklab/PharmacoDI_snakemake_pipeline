@@ -16,11 +16,12 @@ write_db = config['write_db']
 
 
 pset_tables = [
-    'gene_annotation', 'gene_compound_tissue_dataset', 'gene', 
-    'mol_cell', 'cell', 'dataset_cell', 'dataset_compound', 
-    'dataset_statistics', 'dataset_tissue', 'dataset', 'dose_response', 
-    'compound_annotation', 'compound', 'experiment', 'profile', 'tissue'
+    'gene_annotation', 'gene', 'mol_cell', 'cell', 'dataset_cell', 
+    'dataset_compound', 'dataset_statistics', 'dataset_tissue', 'dataset', 
+    'dose_response', 'compound_annotation', 'compound', 'experiment', 
+    'profile', 'tissue'
     ]
+gct_table = ['gene_compound_tissue_dataset']
 synonym_tables = ['cell_synonym', 'tissue_synonym', 'compound_synonym']
 metaanalysis_tables = ['gene_compound_tissue', 'gene_compound_dataset']
 meta_tables = ['target', 'compound_target', 'gene_target', 'cellosaurus', 
@@ -41,8 +42,8 @@ if not os.path.exists(gene_sig_dir):
 # Best practices: https://snakemake.readthedocs.io/en/stable/tutorial/basics.html#step-7-adding-a-target-rule
 rule all:
     input:
-        expand("{output}/{table}.csv", output=output_dir, 
-            table=(pset_tables + meta_tables))
+        expand("{output}/{table}.jay", output=output_dir, 
+            table=(pset_tables + gct_table + meta_tables))
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
         user = os.environ.get('MYSQL_USER')
@@ -70,7 +71,21 @@ rule build_pset_tables:
             print(e)
 
 
-# ---- 2. Merge PSet tables
+# ---- 2. Convert gene_compound_tissue_dataset to .jay datable binary format
+rule convert_gctd_df:
+    input:
+        os.path.join(gene_sig_dir, 'gene_compound_tissue_dataset.csv')
+    params:
+        memory_limit=int(60e10) # 60 GB
+    output:
+        os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
+    run:
+        import datatable as dt
+        gct_df = dt.fread(input, memory_limit=params.memory_limit)
+        gct_df.to_jay(output[0])
+
+
+# ---- 3. Merge PSet tables
 rule merge_pset_tables:
     input:
         expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), 
@@ -88,8 +103,15 @@ rule merge_pset_tables:
         except BaseException as e:
             print(e)
 
+# ---- 4. Map foreign keys to gene_compound_tissue_datset table
+rule map_fk_to_gct_df:
+    input:
+        os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
+    output:
+        touch(os.path.join(output_dir, 'gct_mapped_to_fk.done'))
+    
 
-# ---- 3. Build synonym tables
+# ---- 5. Build synonym tables
 rule build_synonym_tables:
     input:
         expand("{output}/{table}.jay", output=output_dir, 
@@ -110,7 +132,7 @@ rule build_synonym_tables:
             
 
 
-# ---- 4. Run ChEMBL API to get targets and drug targets tables
+# ---- 6. Run ChEMBL API to get targets and drug targets tables
 rule get_chembl_targets:
     params:
         os.path.join(metadata_dir, 'chembl_targets.csv')
@@ -149,7 +171,7 @@ rule get_chembl_compound_targets:
             print(e)
 
 
-# ---- 5. Build target and drug target tables
+# ---- 7. Build target and drug target tables
 rule build_target_tables:
     input:
         os.path.join(output_dir, 'gene.jay'),
@@ -241,10 +263,10 @@ rule convert_meta_analysis_tables:
         import pandas as pd
         for i in range(len(input)):
             if '.csv' in input[i]:
-                df = dt.Frame(input[i], memory_limit=100000000000)
+                df = dt.Frame(input[i], memory_limit=int(60e10))
             else:
                 df = dt.Frame(pd.read_parquet(input[i]), 
-                    memory_limit=100000000000)
+                    memory_limit=int(60e10))
             df.to_jay(output[i])
             del df
         
