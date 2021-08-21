@@ -334,7 +334,7 @@ rule add_cell_uid_to_cell:
         cell=os.path.join(output_dir, 'cell.jay'),
         metadata=os.path.join(metadata_dir, 'cell_annotation_all.csv')
     output:
-        touch(os.path.join(output_dir, 'cell_annotated.done'))
+        touch(os.path.join(output_dir, 'cell_annotation.done'))
     run:
         from datatable import dt, fread, f, g, join, update
         import numpy as np

@@ -197,8 +197,8 @@ class Dose_Response(Base):
     id = Column(Integer, primary_key=True)
     experiment_id = Column(Integer, ForeignKey('experiment.id'), nullable=False)
     # TODO: can change to float but it doesn't have a scale param
-    dose = Column(Numeric(precision=16, scale=8))
-    response = Column(Numeric(precision=16, scale=8))
+    dose = Column(Numeric(precision=65, scale=8))
+    response = Column(Numeric(precision=65, scale=8))
 
 
 class Profile(Base):
