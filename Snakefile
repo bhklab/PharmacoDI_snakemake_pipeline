@@ -60,7 +60,6 @@ rule build_pset_tables:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 1")
             pset_dict = pdi.pset_df_to_nested_dict(
                 pdi.read_pset(wildcards.pset, pset_dir)
                 )
@@ -71,7 +70,24 @@ rule build_pset_tables:
             print(e)
 
 
-# ---- 2. Convert gene_compound_tissue_dataset to .jay datable binary format
+# ---- 2. Merge PSet tables
+rule merge_pset_tables:
+    input:
+        expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), 
+            pset=pset_names),
+        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
+    output:
+        expand("{output}/{table}.jay", output=output_dir, table=pset_tables)
+    run:
+        try:
+            import PharmacoDI as pdi
+            pdi.combine_all_pset_tables(procdata_dir, output_dir, 
+                input.compound_meta_file)
+        except BaseException as e:
+            print(e)
+
+
+# ---- 3. Convert gene_compound_tissue_dataset to .jay datable binary format
 rule convert_gctd_df:
     input:
         os.path.join(gene_sig_dir, 'gene_compound_tissue_dataset.csv')
@@ -85,37 +101,54 @@ rule convert_gctd_df:
         gct_df.to_jay(output[0])
 
 
-# ---- 3. Merge PSet tables
-rule merge_pset_tables:
-    input:
-        expand(os.path.join(f'{procdata_dir}', '{pset}', '{pset}_log.txt'), 
-            pset=pset_names),
-        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
-    output:
-        expand("{output}/{table}.jay", output=output_dir, table=pset_tables)
-    run:
-        try:
-            import PharmacoDI as pdi
-            print("Running rule 2")
-            print(input)
-            pdi.combine_all_pset_tables(procdata_dir, output_dir, 
-                input.compound_meta_file)
-        except BaseException as e:
-            print(e)
-
-
 # ---- 4. Map foreign keys to gene_compound_tissue_datset table
 rule map_fk_to_gct_df:
     input:
-        os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
+        gct=os.path.join(output_dir, 'gene_compound_tissue_dataset.jay'),
+        gene=os.path.join(output_dir, 'gene.jay'),
+        compound=os.path.join(output_dir, 'compound.jay'),
+        tissue=os.path.join(output_dir, 'tissue.jay'),
+        dataset=os.path.join(output_dir, 'dataset.jay')
     output:
         touch(os.path.join(output_dir, 'gct_mapped_to_fk.done'))
-    
+    run:
+        import PharmacoDI as pdi
+        from datatable import dt, fread
+        gct_df = dt.fread(gct, memory_limit=int(60e10))
+        gene_df = dt.fread(gene)
+        compound_df = dt.fread(compound)
+        tissue_df = dt.fread(tissue)
+        dataset_df = dt.fread(dataset)
+        map_foreign_key_to_table(
+            primary_df=gct_df, 
+            fk_df=gene_df, 
+            join_column_dict={'primary_df': 'gene', 'fk_df': 'name'}
+        )
+        map_foreign_key_to_table(
+            primary_df=gct_df, 
+            fk_df=compound_df, 
+            join_column_dict={'primary_df': 'compound', 'fk_df': 'name'}
+        )
+        map_foreign_key_to_table(
+            primary_df=gct_df, 
+            fk_df=tissue_df, 
+            join_column_dict={'primary_df': 'tissue', 'fk_df': 'name'}
+        )
+        map_foreign_key_to_table(
+            primary_df=gct_df, 
+            fk_df=dataset_df, 
+            join_column_dict={'primary_df': 'dataset', 'fk_df': 'name'}
+        )
+        gct_df[:, update(sens_stat='AAC')]
+        gct_df.names = {'gene': 'gene_id', 'compound': 'compound_id', 
+            'tissue': 'tissue_id', 'dataset': 'dataset_id'}
+        gct_df.to_jay(gct)
 
 
 # ---- 5. Build synonym tables
 rule build_synonym_tables:
     input:
+        os.path.join(output_dir, 'gct_mapped_to_fk.done'),
         expand("{output}/{table}.jay", output=output_dir, 
             table=['cell', 'compound', 'tissue']),
         cell_meta_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
@@ -193,7 +226,6 @@ rule build_target_tables:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 5")
             pdi.build_target_tables(
                 input.drugbank_file, 
                 input.chembl_compound_target_file, 
@@ -307,17 +339,17 @@ rule build_meta_analysis_tables:
         run_cell_annotation_rule=os.path.join(
             output_dir,
             'cell_annotation.done'
-        )
+        ),
         run_mapping_rule=os.path.join(
             output_dir, 
             'gene_annotations_mapped.done'
-            ),
+        ),
         gene_compound_tissue_file=os.path.join(
             'rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay'
-            ),
+        ),
         gene_compound_dataset_file=os.path.join(
             'rawdata/gene_signatures/metaanalysis/gene_compound_dataset.jay'
-            ),
+        ),
         gene_file = os.path.join(output_dir, 'gene.jay'),
         compound_file = os.path.join(output_dir, 'compound.jay'),
         tissue_file = os.path.join(output_dir, 'tissue.jay'),

@@ -1,4 +1,4 @@
-import pymysql
+d import pymysql
 from sqlalchemy.sql.sqltypes import SmallInteger
 pymysql.install_as_MySQLdb()
 
@@ -62,6 +62,7 @@ class Compound(Base):
     __tablename__ = "compound"
     id = Column(Integer, primary_key=True)
     name = Column(String(250))
+    compound_uid = Column(String(250))
 
 
 # ---- SECONDARY (ANNOTATION) TABLES ----------------------------
@@ -72,6 +73,7 @@ class Cell(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(250))
     tissue_id = Column(Integer, ForeignKey('tissue.id'), nullable=False)
+    cell_uid = Column(String(250))
 
 
 class Compound_Annotation(Base):
@@ -85,12 +87,16 @@ class Compound_Annotation(Base):
 
 
 class Gene_Annotation(Base):
-    __tablename__ = "gene_annotation"
-    id = Column(Integer, primary_key=True)
-    gene_id = Column(Integer, ForeignKey('gene.id'), nullable=False)
-    symbol = Column(String(250))
-    gene_seq_start = Column(BigInteger)
-    gene_seq_end = Column(BigInteger)
+    __table__ = Table(
+        "gene_annotation",
+        Column('id', Integer, primary_key=True),
+        Column('gene_id', Integer, ForeignKey('gene.id'), nullable=False),
+        Column('symbol', String(250)),
+        Column('gene_seq_start', BigInteger),
+        Column('gene_seq_end', BigInteger),
+        Column('chr', String(250)),
+        Column('strand', String(250)),
+    )
 
 
 class Cellosaurus(Base):
@@ -357,14 +363,6 @@ class Dataset_Statistics(Base):
     experiments = Column(Integer, nullable=False)
 
 
-df = pd.read_sql_query(
-    "SELECT g.name as 'gene_name', c.name as 'compound_name', t.name as 'tissue_name', gene_id, gct.* "
-    "FROM gene_compound_tissue as gct " 
-    "JOIN gene as g ON g.id = gct.gene_id " 
-    "JOIN compound as c ON c.id = gct.compound_id " 
-    "JOIN tissue as t ON t.id = gct.tissue_id;",
-    engine
-    )
 # ----------- DB FUNCTIONS ---------------------------------------------
 
 @logger.catch
