@@ -2,6 +2,11 @@ import os
 import sys
 import yaml
 
+# Never run, for debugging
+if False:
+    with open('config.yaml') as fl:
+        config = yaml.safe_load(fl)
+
 configfile: 'config.yaml'
 
 pset_dir = config['raw_data']
@@ -13,7 +18,7 @@ pset_names = config['psets']
 db_name = config['db_name']
 meta_analysis_dir = config['meta_analysis_dir']
 write_db = config['write_db']
-
+nthread = config['nthread']
 
 pset_tables = [
     'gene_annotation', 'gene', 'mol_cell', 'cell', 'dataset_cell', 
@@ -94,7 +99,7 @@ rule convert_gctd_df:
     params:
         memory_limit=int(60e10) # 60 GB
     output:
-        os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
+        os.path.join(output_dir, 'gctd.jay')
     run:
         import datatable as dt
         gct_df = dt.fread(input, memory_limit=params.memory_limit)
@@ -104,64 +109,70 @@ rule convert_gctd_df:
 # ---- 4. Map foreign keys to gene_compound_tissue_datset table
 rule map_fk_to_gct_df:
     input:
-        gct=os.path.join(output_dir, 'gene_compound_tissue_dataset.jay'),
+        gctd=os.path.join(output_dir, 'gctd.jay'),
         gene=os.path.join(output_dir, 'gene.jay'),
         compound=os.path.join(output_dir, 'compound.jay'),
         tissue=os.path.join(output_dir, 'tissue.jay'),
         dataset=os.path.join(output_dir, 'dataset.jay')
     output:
-        touch(os.path.join(output_dir, 'gct_mapped_to_fk.done'))
+        os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
     run:
         import PharmacoDI as pdi
-        from datatable import dt, fread
-        gct_df = dt.fread(gct, memory_limit=int(60e10))
-        gene_df = dt.fread(gene)
-        compound_df = dt.fread(compound)
-        tissue_df = dt.fread(tissue)
-        dataset_df = dt.fread(dataset)
-        map_foreign_key_to_table(
-            primary_df=gct_df, 
+        from datatable import dt, fread, update
+        print('Loading dfs')
+        gctd_df = dt.fread(input.gctd)
+        gene_df = dt.fread(input.gene)
+        compound_df = dt.fread(input.compound)
+        tissue_df = dt.fread(input.tissue)
+        dataset_df = dt.fread(input.dataset)
+        print('Joining with gene')
+        pdi.map_foreign_key_to_table(
+            primary_df=gctd_df, 
             fk_df=gene_df, 
             join_column_dict={'primary_df': 'gene', 'fk_df': 'name'}
         )
-        map_foreign_key_to_table(
-            primary_df=gct_df, 
+        print('Joining with compound')
+        pdi.map_foreign_key_to_table(
+            primary_df=gctd_df, 
             fk_df=compound_df, 
             join_column_dict={'primary_df': 'compound', 'fk_df': 'name'}
         )
-        map_foreign_key_to_table(
-            primary_df=gct_df, 
+        print('Joining with tissue')
+        pdi.map_foreign_key_to_table(
+            primary_df=gctd_df, 
             fk_df=tissue_df, 
             join_column_dict={'primary_df': 'tissue', 'fk_df': 'name'}
         )
-        map_foreign_key_to_table(
-            primary_df=gct_df, 
+        print('Joining with dataset')
+        pdi.map_foreign_key_to_table(
+            primary_df=gctd_df, 
             fk_df=dataset_df, 
             join_column_dict={'primary_df': 'dataset', 'fk_df': 'name'}
         )
-        gct_df[:, update(sens_stat='AAC')]
-        gct_df.names = {'gene': 'gene_id', 'compound': 'compound_id', 
+        print('Updating column names')
+        gctd_df[:, update(sens_stat='AAC')]
+        gctd_df.names = {'gene': 'gene_id', 'compound': 'compound_id', 
             'tissue': 'tissue_id', 'dataset': 'dataset_id'}
-        gct_df.to_jay(gct)
+        print('Writing to disk')
+        gctd_df.to_jay(output[0])
 
 
 # ---- 5. Build synonym tables
 rule build_synonym_tables:
     input:
-        os.path.join(output_dir, 'gct_mapped_to_fk.done'),
         expand("{output}/{table}.jay", output=output_dir, 
             table=['cell', 'compound', 'tissue']),
-        cell_meta_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
-        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
+        cell_file = os.path.join(metadata_dir, "cell_annotation_all.csv"),
+        compound_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
         expand("{output}/{table}.jay", output=output_dir, table=synonym_tables)
     run:
         try:
             import PharmacoDI as pdi
             print("Running rule 3")
-            pdi.build_cell_synonym_df(input.cell_meta_file, output_dir)
-            pdi.build_tissue_synonym_df(input.cell_meta_file, output_dir)
-            pdi.build_compound_synonym_df(input.compound_meta_file, output_dir)
+            pdi.build_cell_synonym_df(input.cell_file, output_dir)
+            pdi.build_tissue_synonym_df(input.cell_file, output_dir)
+            pdi.build_compound_synonym_df(input.compound_file, output_dir)
         except BaseException as e:
             print(e)
             
@@ -173,7 +184,7 @@ rule get_chembl_targets:
         os.path.join(metadata_dir, 'chembl_targets.csv')
     output:
         os.path.join(metadata_dir, 'chembl_targets.csv')
-    threads: 16
+    threads: nthread
     run:
         try:
             import PharmacoDI as pdi
@@ -185,11 +196,17 @@ rule get_chembl_targets:
 
 rule get_chembl_compound_targets:
     input:
-        compound_annotation_file = os.path.join(output_dir, 'compound_annotation.jay'),
+        compound_annotation_file = os.path.join(
+            output_dir, 
+            'compound_annotation.jay'
+        ),
         chembl_target_file = os.path.join(metadata_dir, 'chembl_targets.csv')
     output:
-        chembl_compound_target_file = os.path.join(metadata_dir, 'chembl_compound_targets.csv')
-    threads: 16
+        chembl_compound_target_file = os.path.join(
+            metadata_dir, 
+            'chembl_compound_targets.csv'
+        )
+    threads: nthread
     run:
         try:
             import PharmacoDI as pdi
