@@ -435,11 +435,11 @@ def bulk_chunk_insert(file_path, table, chunksize=100000):
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
     data_df = dt.fread(file_path)
-    nchunks = math.ceil(data_df.shape[0] / 100000)
-    chunk_array = np.array_split(np.arange(data_df.shape[0] + 1), nchunks)
+    nchunks = math.ceil((data_df.shape[0] + 1) / 100000)
+    chunk_array = np.array_split(np.arange(data_df.shape[0]), nchunks)
     index_tuple_list = [(int(np.min(x)), int(np.max(x))) for x in chunk_array]
     for idx in tqdm(index_tuple_list, colour='magenta'):
-        df = data_df[idx[0]:idx[1], :].to_pandas()
+        df = data_df[idx[0]:(idx[1] + 1), :].to_pandas()
         row_dict = create_records(df)
         session.bulk_insert_mappings(table, row_dict)
         session.commit()
