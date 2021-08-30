@@ -2,8 +2,9 @@ import pymysql
 from sqlalchemy.sql.sqltypes import SmallInteger
 pymysql.install_as_MySQLdb()
 
+import sqlalchemy # for type hinting only
 from sqlalchemy import create_engine, Table, Column, Integer, String, Numeric, \
-                    Boolean, ForeignKey, Text, BigInteger, text
+    Boolean, ForeignKey, Text, BigInteger, text, func
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -127,7 +128,7 @@ class Cellosaurus(Base):
         Column("oi", Text(65535)),
         Column("sx", Text(65535)),
         Column("ca", Text(65535)))
-    
+
 
 # ---- DATASET JOIN TABLES ----------------------------
 
@@ -344,8 +345,6 @@ class Gene_Target(Base):
 
 
 # ----------- TRIAL + STATS TABLES -------------------------------------
-
-
 class Clinical_Trial(Base):
     __tablename__ = "clinical_trial"
     clinical_trial_id = Column(Integer, primary_key=True)
@@ -430,20 +429,80 @@ def bulk_insert(file_path, table):
 
 
 @logger.catch
-def bulk_chunk_insert(file_path, table, chunksize=100000):
+def bulk_insert_chunk_from_file(file_path, table, chunksize=100000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
     data_df = dt.fread(file_path)
-    nchunks = math.ceil((data_df.shape[0] + 1) / 100000)
-    chunk_array = np.array_split(np.arange(data_df.shape[0]), nchunks)
+    bulk_insert_chunk(data_df=data_df, table=table, session=session, 
+        chunksize=chunksize, start_index=0)
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE!\n')
+
+
+@logger.catch
+def bulk_insert_chunk(
+    data_df: dt.Frame,
+    table: sqlalchemy.Table,
+    session: sqlalchemy.orm.Session, 
+    chunksize: int = 100000, 
+    start_index: int = 0
+) -> None:
+    """
+    Executes a bulk insert statement from `data_df` to `table` with
+    approximately `chunksize` rows per 
+    `session.bulk_insert_mappings` call, starting from `start_index` 
+    of `data_df`.
+
+    :param data_df: The datatable to write from.
+    :param table: The SQLAlchemy table to write to.
+    :param session: The SQLAlchemy session object to write to.
+    :param chunksize: How many rows, approximately, to insert per 
+        iteration.
+    :param start_index: The table row index to start writing from. 
+        If using id column values from the databse, this should be id - 1 
+        to match the 0 based indexing of Python vs the 1 based indexing 
+        of SQL tables.
+
+    :return: None, write to database.
+    """
+    filter_df = data_df[start_index:, :]
+    nchunks = math.ceil((filter_df.shape[0] + 1) / chunksize)
+    chunk_array = np.array_split(np.arange(filter_df.shape[0]), nchunks)
     index_tuple_list = [(int(np.min(x)), int(np.max(x))) for x in chunk_array]
     for idx in tqdm(index_tuple_list, colour='magenta'):
-        df = data_df[idx[0]:(idx[1] + 1), :].to_pandas()
+        df = filter_df[idx[0]:(idx[1] + 1), :].to_pandas()
         row_dict = create_records(df)
         session.bulk_insert_mappings(table, row_dict)
         session.commit()
-    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE!\n')
+
+
+
+@logger.catch
+def chunk_append_to_table(
+    file_path: str, 
+    table: sqlalchemy.Table, 
+    chunksize: int = 100000
+) -> None:
+    """
+    Append to an existing database table after the highest value of the id
+    column.
+    """
+    table_name = table.__table__.name
+    logger.info(
+        f'\tAppending data from {os.path.basename(file_path)} to {table_name}...'
+    )
+    # Get the highest index from the table so far
+    with engine.connect() as con:
+        max_index = con.execute(f'SELECT MAX(id) FROM {table_name}').first()[0]
+    # Read in the raw table data and filter to the index of interest
+    data_df = dt.fread(file_path)
+    session = Session(bind=engine)
+    logger.info(f'Inserting after table id: {max_index}')
+    bulk_insert_chunk(
+        data_df=data_df, table=table, session=session, chunksize=chunksize, 
+        start_index=(max_index - 1)
+    )
+    logger.info(f'\tAppending data from {os.path.basename(file_path)} to {table_name}... DONE!\n')
 
 
 @logger.catch
@@ -498,19 +557,19 @@ def seed_tables(data_dir):
 
     logger.info('Experiment tables... ')
     # Seed experiment tables
-    bulk_chunk_insert(f'{data_dir}/experiment.jay', Experiment)
-    bulk_chunk_insert(f'{data_dir}/dose_response.jay', Dose_Response)
+    bulk_insert_chunk_from_file(f'{data_dir}/experiment.jay', Experiment)
+    bulk_insert_chunk_from_file(f'{data_dir}/dose_response.jay', Dose_Response)
     bulk_insert(f'{data_dir}/mol_cell.jay', Mol_Cell)
-    bulk_chunk_insert(f'{data_dir}/profile.jay', Profile)
+    bulk_insert_chunk_from_file(f'{data_dir}/profile.jay', Profile)
     logger.info('Experiment tables... DONE!\n')
 
 
     logger.info('Building gene_compound_* tables...')
-    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue.jay',
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_tissue.jay',
         Gene_Compound_Tissue)
-    bulk_chunk_insert(f'{data_dir}/gene_compound_dataset.jay',
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_dataset.jay',
         Gene_Compound_Dataset)
-    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue_dataset.jay', 
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_tissue_dataset.jay', 
         Gene_Compound_Tissue_Dataset)
     # bulk_chunk_insert(f'{data_dir}/gene_compound.jay',
     #     Gene_Compound)
