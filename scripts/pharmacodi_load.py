@@ -1,11 +1,17 @@
 import pymysql
+from sqlalchemy.sql.sqltypes import SmallInteger
 pymysql.install_as_MySQLdb()
 
+import sqlalchemy # for type hinting only
 from sqlalchemy import create_engine, Table, Column, Integer, String, Numeric, \
-                    Boolean, ForeignKey, Text, BigInteger, text
+    Boolean, ForeignKey, Text, BigInteger, text, func
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.ext.declarative import declarative_base
+
+# -- Parsing table filess
 import pandas as pd
+import numpy as np
+from datatable import dt, fread
 
 # -- Progress bar
 from tqdm import tqdm
@@ -38,28 +44,30 @@ engine = None
 
 # ---- PRIMARY TABLES -------------------------------------------
 
+
 class Dataset(Base):
     __tablename__ = "dataset"
     id = Column(Integer, primary_key=True)
-    name = Column(String(50))
+    name = Column(Text(65535))
 
 
 class Tissue(Base):
     __tablename__ = "tissue"
     id = Column(Integer, primary_key=True)
-    name = Column(String(50))
+    name = Column(Text(65535))
 
 
 class Gene(Base):
     __tablename__ = "gene"
     id = Column(Integer, primary_key=True)
-    name = Column(String(250))
+    name = Column(Text(65535))
 
 
 class Compound(Base):
     __tablename__ = "compound"
     id = Column(Integer, primary_key=True)
-    name = Column(String(250))
+    name = Column(Text(65535))
+    compound_uid = Column(Text(65535))
 
 
 # ---- SECONDARY (ANNOTATION) TABLES ----------------------------
@@ -68,8 +76,9 @@ class Compound(Base):
 class Cell(Base):
     __tablename__ = "cell"
     id = Column(Integer, primary_key=True)
-    name = Column(String(250))
+    name = Column(Text(65535))
     tissue_id = Column(Integer, ForeignKey('tissue.id'), nullable=False)
+    cell_uid = Column(Text(65535))
 
 
 class Compound_Annotation(Base):
@@ -77,18 +86,23 @@ class Compound_Annotation(Base):
     id = Column(Integer, primary_key=True)
     compound_id = Column(Integer, ForeignKey('compound.id'), nullable=False)
     smiles = Column(Text)
-    inchikey = Column(String(250))
-    pubchem = Column(String(250))
+    inchikey = Column(Text(65535))
+    pubchem = Column(Text(65535))
     fda_status = Column(Boolean)
 
 
 class Gene_Annotation(Base):
-    __tablename__ = "gene_annotation"
-    id = Column(Integer, primary_key=True)
-    gene_id = Column(Integer, ForeignKey('gene.id'), nullable=False)
-    symbol = Column(String(250))
-    gene_seq_start = Column(BigInteger)
-    gene_seq_end = Column(BigInteger)
+    __table__ = Table(
+        "gene_annotation",
+        Base.metadata,
+        Column('id', Integer, primary_key=True),
+        Column('gene_id', Integer, ForeignKey('gene.id'), nullable=False),
+        Column('symbol', Text(65535)),
+        Column('gene_seq_start', BigInteger),
+        Column('gene_seq_end', BigInteger),
+        Column('chr', String(255)),
+        Column('strand', String(255))
+    )
 
 
 class Cellosaurus(Base):
@@ -99,22 +113,22 @@ class Cellosaurus(Base):
         Base.metadata,
         Column("id", Integer, primary_key=True),
         Column("cell_id", Integer, ForeignKey('cell.id'), nullable=False),
-        Column("identifier", String(250)),
-        Column("accession", String(250)),
-        Column("as", String(250)),
-        Column("sy", String(250)),
-        Column("dr", Text),
-        Column("rx", Text),
-        Column("ww", Text),
-        Column("cc", Text),
-        Column("st", Text),
-        Column("di", String(250)),
-        Column("ox", String(250)),
-        Column("hi", String(250)),
-        Column("oi", Text),
-        Column("sx", String(250)),
-        Column("ca", String(250)))
-    
+        Column("identifier", String(255)),
+        Column("accession", String(255)),
+        Column("as", String(255)),
+        Column("sy", String(255)),
+        Column("dr", Text(65535)),
+        Column("rx", Text(65535)),
+        Column("ww", Text(65535)),
+        Column("cc", Text(65535)),
+        Column("st", Text(65535)),
+        Column("di", Text(65535)),
+        Column("ox", Text(65535)),
+        Column("hi", Text(65535)),
+        Column("oi", Text(65535)),
+        Column("sx", Text(65535)),
+        Column("ca", Text(65535)))
+
 
 # ---- DATASET JOIN TABLES ----------------------------
 
@@ -147,21 +161,24 @@ class Tissue_Synonym(Base):
     __tablename__ = "tissue_synonym"
     id = Column(Integer, primary_key=True)
     tissue_id = Column(Integer, ForeignKey('tissue.id'), nullable=False)
-    tissue_name = Column(String(250), nullable=False)
+    dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
+    tissue_name = Column(Text(65535), nullable=False)
 
 
 class Cell_Synonym(Base):
     __tablename__ = "cell_synonym"
     id = Column(Integer, primary_key=True)
     cell_id = Column(Integer, ForeignKey('cell.id'), nullable=False)
-    cell_name = Column(String(250), nullable=False)
+    dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
+    cell_name = Column(Text(65535), nullable=False)
 
 
 class Compound_Synonym(Base):
     __tablename__ = "compound_synonym"
     id = Column(Integer, primary_key=True)
     compound_id = Column(Integer, ForeignKey('compound.id'), nullable=False)
-    compound_name = Column(String(250), nullable=False)
+    dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
+    compound_name = Column(Text(65535), nullable=False)
 
 
 # --------- EXPERIMENT TABLES ---------------------------
@@ -181,8 +198,8 @@ class Dose_Response(Base):
     id = Column(Integer, primary_key=True)
     experiment_id = Column(Integer, ForeignKey('experiment.id'), nullable=False)
     # TODO: can change to float but it doesn't have a scale param
-    dose = Column(Numeric(precision=16, scale=8))
-    response = Column(Numeric(precision=16, scale=8))
+    dose = Column(Numeric(precision=65, scale=8))
+    response = Column(Numeric(precision=65, scale=8))
 
 
 class Profile(Base):
@@ -216,24 +233,24 @@ class Gene_Compound_Tissue_Dataset(Base):
     dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
     tissue_id = Column(Integer, ForeignKey('tissue.id'), nullable=False)
     estimate = Column(Numeric(precision=64, scale=16))
-    lower = Column(Numeric(precision=64, scale=16))
-    upper = Column(Numeric(precision=64, scale=16))
+    lower_analytic = Column(Numeric(precision=64, scale=16))
+    upper_analytic = Column(Numeric(precision=64, scale=16))
+    lower_permutation = Column(Numeric(precision=64, scale=16))
+    upper_permutation = Column(Numeric(precision=64, scale=16))
     n = Column(Integer)
-    tstat = Column(Numeric(precision=64, scale=16))
-    fstat = Column(Numeric(precision=64, scale=16))
-    pvalue = Column(Numeric(precision=64, scale=16))
+    pvalue_analytic = Column(Numeric(precision=64, scale=16))
+    pvalue_permutation = Column(Numeric(precision=64, scale=16))
     df = Column(Integer)
-    fdr = Column(Numeric(precision=64, scale=16))
-    FWER_gene = Column(Numeric(precision=64, scale=16))
-    FWER_compound = Column(Numeric(precision=64, scale=16))
-    FWER_all = Column(Numeric(precision=64, scale=16))
-    BF_p_all = Column(Numeric(precision=64, scale=16))
-    sens_stat = Column(String(50))
-    mDataType = Column(String(50))
-    tested_in_human_trials = Column(Boolean)
-    in_clinical_trials = Column(Boolean)
+    fdr_analytic = Column(Numeric(precision=64, scale=16))
+    fdr_permutation = Column(Numeric(precision=64, scale=16))
+    significant_permutation = Column(SmallInteger)
+    permutation_done = Column(SmallInteger)
+    sens_stat = Column(String(255))
+    mDataType = Column(String(255))
+
 
 # ---------- META-ANALYSIS TABLES--------------------------------
+
 
 class Gene_Compound_Dataset(Base):
     __tablename__ = "gene_compound_dataset"
@@ -242,22 +259,21 @@ class Gene_Compound_Dataset(Base):
     compound_id = Column(Integer, ForeignKey('compound.id'), nullable=False)
     dataset_id = Column(Integer, ForeignKey('dataset.id'), nullable=False)
     estimate = Column(Numeric(precision=64, scale=16))
-    lower = Column(Numeric(precision=64, scale=16))
-    upper = Column(Numeric(precision=64, scale=16))
+    lower_analytic = Column(Numeric(precision=64, scale=16))
+    upper_analytic = Column(Numeric(precision=64, scale=16))
+    lower_permutation = Column(Numeric(precision=64, scale=16))
+    upper_permutation = Column(Numeric(precision=64, scale=16))
     n = Column(Integer)
-    tstat = Column(Numeric(precision=64, scale=16))
-    fstat = Column(Numeric(precision=64, scale=16))
-    pvalue = Column(Numeric(precision=64, scale=16))
+    pvalue_analytic = Column(Numeric(precision=64, scale=16))
+    pvalue_permutation = Column(Numeric(precision=64, scale=16))
     df = Column(Integer)
-    fdr = Column(Numeric(precision=64, scale=16))
-    FWER_gene = Column(Numeric(precision=64, scale=16))
-    FWER_compound = Column(Numeric(precision=64, scale=16))
-    FWER_all = Column(Numeric(precision=64, scale=16))
-    BF_p_all = Column(Numeric(precision=64, scale=16))
+    fdr_analytic = Column(Numeric(precision=64, scale=16))
+    fdr_permutation = Column(Numeric(precision=64, scale=16))
+    significant_permutation = Column(SmallInteger)
+    permutation_done = Column(SmallInteger)
     sens_stat = Column(String(50))
     mDataType = Column(String(50))
-    tested_in_human_trials = Column(Boolean)
-    in_clinical_trials = Column(Boolean)
+
 
 class Gene_Compound_Tissue(Base):
     __tablename__ = "gene_compound_tissue"
@@ -311,7 +327,7 @@ class Gene_Compound_Tissue(Base):
 class Target(Base):
     __tablename__ = "target"
     id = Column(Integer, primary_key=True)
-    name = Column(String(250))
+    name = Column(Text(65535))
 
 
 class Compound_Target(Base):
@@ -329,14 +345,12 @@ class Gene_Target(Base):
 
 
 # ----------- TRIAL + STATS TABLES -------------------------------------
-
-
 class Clinical_Trial(Base):
     __tablename__ = "clinical_trial"
     clinical_trial_id = Column(Integer, primary_key=True)
-    nct = Column(String(250), nullable=False)
-    link = Column(Text)
-    status = Column(String(50), nullable=False)
+    nct = Column(String(255), nullable=False)
+    link = Column(Text(65535))
+    status = Column(Text(65535), nullable=False)
 
 
 class Compound_Trial(Base):
@@ -356,8 +370,8 @@ class Dataset_Statistics(Base):
     experiments = Column(Integer, nullable=False)
 
 
-
 # ----------- DB FUNCTIONS ---------------------------------------------
+
 
 @logger.catch
 def fk_checks(value: int) -> text:
@@ -373,11 +387,15 @@ def fk_checks(value: int) -> text:
         raise ValueError("Valid inputs are 0 for off or 1 for on")
     return text(f"""SET FOREIGN_KEY_CHECKS={value};""")
 
+
 @logger.catch
 def setup_database(user, password, db_name):
     logger.info('Setting up database...')
     global engine
-    engine = create_engine(f"mysql://{user}:{password}@localhost/{db_name}", echo = False)
+    engine = create_engine(
+        f"mysql://{user}:{password}@localhost/{db_name}", 
+        echo = False
+    )
     with engine.connect() as con:
         # doing 'commit' before a command makes the next one execute 
         #>non-transactionally
@@ -397,111 +415,163 @@ def create_records(df):
     df = df.rename(columns={'drug_id': 'compound_id', 'drug_name': 'compound_name'})
     return df.to_dict('records')
 
+
 @logger.catch
 def bulk_insert(file_path, table):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
-    df = pd.read_csv(file_path)
+    df = dt.fread(file_path).to_pandas()
     row_dict = create_records(df)
     session = Session(bind=engine)
     session.bulk_insert_mappings(table, row_dict)
     session.commit()
     logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE\n')
 
-# helper to determine rows in a csv files
-@logger.catch
-def count_lines(filename):
-    """Count lines in a file cross platform"""
-    out = subprocess.Popen(
-        ['wc', '-l', filename],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT
-        ).communicate()[0]
-    return int(out.partition(b' ')[0])
 
 @logger.catch
-# TODO: make this quiet
-def bulk_chunk_insert(file_path, table, chunksize=100000):
+def bulk_insert_chunk_from_file(file_path, table, chunksize=100000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
-    csv_nrows = count_lines(file_path)
-    nchunks = math.ceil(csv_nrows / chunksize)
-    reader = pd.read_csv(file_path, chunksize=chunksize, iterator=True)
-    for df in tqdm(reader, total=nchunks, colour='magenta', dynamic_ncols=True):
+    data_df = dt.fread(file_path)
+    bulk_insert_chunk(data_df=data_df, table=table, session=session, 
+        chunksize=chunksize, start_index=0)
+    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE!\n')
+
+
+@logger.catch
+def bulk_insert_chunk(
+    data_df: dt.Frame,
+    table: sqlalchemy.Table,
+    session: sqlalchemy.orm.Session, 
+    chunksize: int = 100000, 
+    start_index: int = 0
+) -> None:
+    """
+    Executes a bulk insert statement from `data_df` to `table` with
+    approximately `chunksize` rows per 
+    `session.bulk_insert_mappings` call, starting from `start_index` 
+    of `data_df`.
+
+    :param data_df: The datatable to write from.
+    :param table: The SQLAlchemy table to write to.
+    :param session: The SQLAlchemy session object to write to.
+    :param chunksize: How many rows, approximately, to insert per 
+        iteration.
+    :param start_index: The table row index to start writing from. 
+        If using id column values from the databse, this should be id - 1 
+        to match the 0 based indexing of Python vs the 1 based indexing 
+        of SQL tables.
+
+    :return: None, write to database.
+    """
+    filter_df = data_df[start_index:, :]
+    nchunks = math.ceil((filter_df.shape[0] + 1) / chunksize)
+    chunk_array = np.array_split(np.arange(filter_df.shape[0]), nchunks)
+    index_tuple_list = [(int(np.min(x)), int(np.max(x))) for x in chunk_array]
+    for idx in tqdm(index_tuple_list, colour='magenta'):
+        df = filter_df[idx[0]:(idx[1] + 1), :].to_pandas()
         row_dict = create_records(df)
         session.bulk_insert_mappings(table, row_dict)
         session.commit()
-    logger.info(f'\tInserting data from {os.path.basename(file_path)}... DONE!\n')
+
+
+
+@logger.catch
+def chunk_append_to_table(
+    file_path: str, 
+    table: sqlalchemy.Table, 
+    chunksize: int = 100000
+) -> None:
+    """
+    Append to an existing database table after the highest value of the id
+    column.
+    """
+    table_name = table.__table__.name
+    logger.info(
+        f'\tAppending data from {os.path.basename(file_path)} to {table_name}...'
+    )
+    # Get the highest index from the table so far
+    with engine.connect() as con:
+        max_index = con.execute(f'SELECT MAX(id) FROM {table_name}').first()[0]
+    # Read in the raw table data and filter to the index of interest
+    data_df = dt.fread(file_path)
+    session = Session(bind=engine)
+    logger.info(f'Inserting after table id: {max_index}')
+    bulk_insert_chunk(
+        data_df=data_df, table=table, session=session, chunksize=chunksize, 
+        start_index=(max_index - 1)
+    )
+    logger.info(f'\tAppending data from {os.path.basename(file_path)} to {table_name}... DONE!\n')
 
 
 @logger.catch
 def seed_tables(data_dir):
 
     logger.info("Loading primary tables...")
-    bulk_insert(f'{data_dir}/dataset.csv', Dataset)
-    bulk_insert(f'{data_dir}/gene.csv', Gene)
-    bulk_insert(f'{data_dir}/tissue.csv', Tissue)
-    bulk_insert(f'{data_dir}/compound.csv', Compound)
+    bulk_insert(f'{data_dir}/dataset.jay', Dataset)
+    bulk_insert(f'{data_dir}/gene.jay', Gene)
+    bulk_insert(f'{data_dir}/tissue.jay', Tissue)
+    bulk_insert(f'{data_dir}/compound.jay', Compound)
     logger.info("Loading primary tables... DONE!\n")
 
 
     logger.info('Loading annotation tables...')
     # Seed secondary/annotation tables
-    bulk_insert(f'{data_dir}/cell.csv', Cell)
-    bulk_insert(f'{data_dir}/compound_annotation.csv', Compound_Annotation)
-    bulk_insert(f'{data_dir}/gene_annotation.csv', Gene_Annotation)
-    bulk_insert(f'{data_dir}/cellosaurus.csv', Cellosaurus)
+    bulk_insert(f'{data_dir}/cell.jay', Cell)
+    bulk_insert(f'{data_dir}/compound_annotation.jay', Compound_Annotation)
+    bulk_insert(f'{data_dir}/gene_annotation.jay', Gene_Annotation)
+    bulk_insert(f'{data_dir}/cellosaurus.jay', Cellosaurus)
     logger.info('Loading annotation tables... DONE!\n')
 
 
     logger.info('Loading join tables...')
     # Seed dataset join tables
-    bulk_insert(f'{data_dir}/dataset_tissue.csv', Dataset_Tissue)
-    bulk_insert(f'{data_dir}/dataset_cell.csv', Dataset_Cell)
-    bulk_insert(f'{data_dir}/dataset_compound.csv', Dataset_Compound)
+    bulk_insert(f'{data_dir}/dataset_tissue.jay', Dataset_Tissue)
+    bulk_insert(f'{data_dir}/dataset_cell.jay', Dataset_Cell)
+    bulk_insert(f'{data_dir}/dataset_compound.jay', Dataset_Compound)
     logger.info('Loading join tables... DONE!\n')
     
     logger.info('Loading synonym tables...')
     # Seed synonym tables
-    bulk_insert(f'{data_dir}/tissue_synonym.csv', Tissue_Synonym)
-    bulk_insert(f'{data_dir}/cell_synonym.csv', Cell_Synonym)
-    bulk_insert(f'{data_dir}/compound_synonym.csv', Compound_Synonym)
+    bulk_insert(f'{data_dir}/tissue_synonym.jay', Tissue_Synonym)
+    bulk_insert(f'{data_dir}/cell_synonym.jay', Cell_Synonym)
+    bulk_insert(f'{data_dir}/compound_synonym.jay', Compound_Synonym)
     logger.info('Loading synonym tables... DONE\n')
 
     logger.info('Loading target tables...')
     # Seed target tables
-    bulk_insert(f'{data_dir}/target.csv', Target)
-    bulk_insert(f'{data_dir}/gene_target.csv', Gene_Target)
-    bulk_insert(f'{data_dir}/compound_target.csv', Compound_Target)
+    bulk_insert(f'{data_dir}/target.jay', Target)
+    bulk_insert(f'{data_dir}/gene_target.jay', Gene_Target)
+    bulk_insert(f'{data_dir}/compound_target.jay', Compound_Target)
     logger.info('Loading target tables... DONE!\n')
 
 
     logger.info('Loading trials and stats tables...')
     # Seed trials & stats tables
-    bulk_insert(f'{data_dir}/clinical_trial.csv', Clinical_Trial)
-    bulk_insert(f'{data_dir}/compound_trial.csv', Compound_Trial)
-    bulk_insert(f'{data_dir}/dataset_statistics.csv', Dataset_Statistics)
+    bulk_insert(f'{data_dir}/clinical_trial.jay', Clinical_Trial)
+    bulk_insert(f'{data_dir}/compound_trial.jay', Compound_Trial)
+    bulk_insert(f'{data_dir}/dataset_statistics.jay', Dataset_Statistics)
     logger.info('Loading trials and stats tables... DONE!\n')
 
 
     logger.info('Experiment tables... ')
     # Seed experiment tables
-    bulk_chunk_insert(f'{data_dir}/experiment.csv', Experiment)
-    bulk_chunk_insert(f'{data_dir}/dose_response.csv', Dose_Response)
-    bulk_insert(f'{data_dir}/mol_cell.csv', Mol_Cell)
-    bulk_chunk_insert(f'{data_dir}/profile.csv', Profile)
+    bulk_insert_chunk_from_file(f'{data_dir}/experiment.jay', Experiment)
+    bulk_insert_chunk_from_file(f'{data_dir}/dose_response.jay', Dose_Response)
+    bulk_insert(f'{data_dir}/mol_cell.jay', Mol_Cell)
+    bulk_insert_chunk_from_file(f'{data_dir}/profile.jay', Profile)
     logger.info('Experiment tables... DONE!\n')
 
 
     logger.info('Building gene_compound_* tables...')
-    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue.csv',
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_tissue.jay',
         Gene_Compound_Tissue)
-    bulk_chunk_insert(f'{data_dir}/gene_compound_dataset.csv',
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_dataset.jay',
         Gene_Compound_Dataset)
-    bulk_chunk_insert(f'{data_dir}/gene_compound_tissue_dataset.csv', 
+    bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_tissue_dataset.jay', 
         Gene_Compound_Tissue_Dataset)
-    # bulk_chunk_insert(f'{data_dir}/gene_compound.csv',
+    # bulk_chunk_insert(f'{data_dir}/gene_compound.jay',
     #     Gene_Compound)
     logger.info('Building gene_compound_* tables... DONE!\n')
     logger.info('\n\nDONE LOADING DATABASE TABLES!')
