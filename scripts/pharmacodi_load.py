@@ -89,6 +89,7 @@ class Compound_Annotation(Base):
     inchikey = Column(Text(65535))
     pubchem = Column(Text(65535))
     fda_status = Column(Boolean)
+    chembl_id = Column(Text(65535))
 
 
 class Gene_Annotation(Base):
@@ -368,6 +369,7 @@ class Dataset_Statistics(Base):
     tissues = Column(Integer, nullable=False)
     compounds = Column(Integer, nullable=False)
     experiments = Column(Integer, nullable=False)
+    genes = Column(Integer, nullable=False)
 
 
 # ----------- DB FUNCTIONS ---------------------------------------------
@@ -389,11 +391,12 @@ def fk_checks(value: int) -> text:
 
 
 @logger.catch
-def setup_database(user, password, db_name):
+def setup_database(user, password, db_name, db_host='local_host'):
     logger.info('Setting up database...')
     global engine
     engine = create_engine(
-        f"mysql://{user}:{password}@localhost/{db_name}", 
+        f"mysql://{user}:{password}@{db_host}/{db_name}",
+        pool_pre_ping = True,
         echo = False
     )
     with engine.connect() as con:
@@ -507,15 +510,12 @@ def chunk_append_to_table(
 
 @logger.catch
 def seed_tables(data_dir):
-
     logger.info("Loading primary tables...")
     bulk_insert(f'{data_dir}/dataset.jay', Dataset)
     bulk_insert(f'{data_dir}/gene.jay', Gene)
     bulk_insert(f'{data_dir}/tissue.jay', Tissue)
     bulk_insert(f'{data_dir}/compound.jay', Compound)
     logger.info("Loading primary tables... DONE!\n")
-
-
     logger.info('Loading annotation tables...')
     # Seed secondary/annotation tables
     bulk_insert(f'{data_dir}/cell.jay', Cell)
@@ -523,38 +523,30 @@ def seed_tables(data_dir):
     bulk_insert(f'{data_dir}/gene_annotation.jay', Gene_Annotation)
     bulk_insert(f'{data_dir}/cellosaurus.jay', Cellosaurus)
     logger.info('Loading annotation tables... DONE!\n')
-
-
     logger.info('Loading join tables...')
     # Seed dataset join tables
     bulk_insert(f'{data_dir}/dataset_tissue.jay', Dataset_Tissue)
     bulk_insert(f'{data_dir}/dataset_cell.jay', Dataset_Cell)
     bulk_insert(f'{data_dir}/dataset_compound.jay', Dataset_Compound)
     logger.info('Loading join tables... DONE!\n')
-    
     logger.info('Loading synonym tables...')
     # Seed synonym tables
     bulk_insert(f'{data_dir}/tissue_synonym.jay', Tissue_Synonym)
     bulk_insert(f'{data_dir}/cell_synonym.jay', Cell_Synonym)
     bulk_insert(f'{data_dir}/compound_synonym.jay', Compound_Synonym)
     logger.info('Loading synonym tables... DONE\n')
-
     logger.info('Loading target tables...')
     # Seed target tables
     bulk_insert(f'{data_dir}/target.jay', Target)
     bulk_insert(f'{data_dir}/gene_target.jay', Gene_Target)
     bulk_insert(f'{data_dir}/compound_target.jay', Compound_Target)
     logger.info('Loading target tables... DONE!\n')
-
-
     logger.info('Loading trials and stats tables...')
     # Seed trials & stats tables
     bulk_insert(f'{data_dir}/clinical_trial.jay', Clinical_Trial)
     bulk_insert(f'{data_dir}/compound_trial.jay', Compound_Trial)
     bulk_insert(f'{data_dir}/dataset_statistics.jay', Dataset_Statistics)
     logger.info('Loading trials and stats tables... DONE!\n')
-
-
     logger.info('Experiment tables... ')
     # Seed experiment tables
     bulk_insert_chunk_from_file(f'{data_dir}/experiment.jay', Experiment)
@@ -562,8 +554,6 @@ def seed_tables(data_dir):
     bulk_insert(f'{data_dir}/mol_cell.jay', Mol_Cell)
     bulk_insert_chunk_from_file(f'{data_dir}/profile.jay', Profile)
     logger.info('Experiment tables... DONE!\n')
-
-
     logger.info('Building gene_compound_* tables...')
     bulk_insert_chunk_from_file(f'{data_dir}/gene_compound_tissue.jay',
         Gene_Compound_Tissue)

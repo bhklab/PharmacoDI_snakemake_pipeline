@@ -4,21 +4,21 @@ import yaml
 
 # Never run, for debugging
 if False:
-    with open('config.yaml') as fl:
+    with open("config.yaml") as fl:
         config = yaml.safe_load(fl)
 
-configfile: 'config.yaml'
+configfile: "config.yaml"
 
-pset_dir = config['raw_data']
-metadata_dir = config['metadata']
-gene_sig_dir = config['gene_signatures']
-procdata_dir = config['proc_data']
-output_dir = config['output']
-pset_names = config['psets']
-db_name = config['db_name']
-meta_analysis_dir = config['meta_analysis_dir']
-write_db = config['write_db']
-nthread = config['nthread']
+pset_dir = config["raw_data"]
+metadata_dir = config["metadata"]
+gene_sig_dir = config["gene_signatures"]
+procdata_dir = config["proc_data"]
+output_dir = config["output"]
+pset_names = config["psets"]
+db_name = config["db_name"]
+meta_analysis_dir = config["meta_analysis_dir"]
+write_db = config["write_db"]
+nthread = config["nthread"]
 
 pset_tables = [
     'gene_annotation', 'gene', 'mol_cell', 'cell', 'dataset_cell', 
@@ -51,10 +51,11 @@ rule all:
             table=(pset_tables + gct_table + meta_tables))
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
-        user = os.environ.get('MYSQL_USER')
-        password = os.environ.get('MYSQL_PASS')
+        user = os.environ.get('DB_USER')
+        password = os.environ.get('DB_PASS')
+        db_host = os.environ.get('DB_HOST')
         if write_db:
-            setup_database(user, password, db_name)
+            setup_database(user, password, db_name, db_host)
             seed_tables(output_dir)
 
 
@@ -102,12 +103,12 @@ rule convert_gctd_df:
         os.path.join(output_dir, 'gctd.jay')
     run:
         import datatable as dt
-        gct_df = dt.fread(input, memory_limit=params.memory_limit)
-        gct_df.to_jay(output[0])
+        gctd_df = dt.fread(input, memory_limit=params.memory_limit)
+        gctd_df.to_jay(output[0])
 
 
 # ---- 4. Map foreign keys to gene_compound_tissue_datset table
-rule map_fk_to_gct_df:
+rule map_fk_to_gctd_df:
     input:
         gctd=os.path.join(output_dir, 'gctd.jay'),
         gene=os.path.join(output_dir, 'gene.jay'),
@@ -118,7 +119,8 @@ rule map_fk_to_gct_df:
         os.path.join(output_dir, 'gene_compound_tissue_dataset.jay')
     run:
         import PharmacoDI as pdi
-        from datatable import dt, fread, update
+        import numpy as np
+        from datatable import dt, fread, f, update, by
         print('Loading dfs')
         gctd_df = dt.fread(input.gctd)
         gene_df = dt.fread(input.gene)
@@ -153,7 +155,18 @@ rule map_fk_to_gct_df:
         gctd_df[:, update(sens_stat='AAC')]
         gctd_df.names = {'gene': 'gene_id', 'compound': 'compound_id', 
             'tissue': 'tissue_id', 'dataset': 'dataset_id'}
-        print('Writing to disk')
+        # Drop duplicates using a group by statement
+        print("Dropping duplicates")
+        try:
+            gctd_df = gctd_df[0, :, 
+                by([f.gene_id, f.compound_id, f.tissue_id, f.dataset_id, 
+                    f.mDataType])]
+        except:
+            print(e)
+        # Add index column
+        print("Adding index column")
+        gctd_df[:, update(id=np.arange(1, gctd_df.shape[0] + 1))]
+        print("Writing to disk")
         gctd_df.to_jay(output[0])
 
 
@@ -175,7 +188,6 @@ rule build_synonym_tables:
             pdi.build_compound_synonym_df(input.compound_file, output_dir)
         except BaseException as e:
             print(e)
-            
 
 
 # ---- 6. Run ChEMBL API to get targets and drug targets tables
