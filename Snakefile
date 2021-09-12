@@ -386,7 +386,7 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
         reactome_compound=os.path.join(metadata_dir, "reactome_compounds.csv"),
         fda_approved=os.path.join(metadata_dir, "FDA_True_post_review.csv")
     output:
-        touch("compound_annotation.done")
+        touch(os.path.join(output_dir, "compound_annotation.done"))
     run:
         from datatable import dt, fread, f, g, join, update, sort, by
 
