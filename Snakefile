@@ -391,10 +391,10 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
         from datatable import dt, fread, f, g, join, update, sort, by
 
         # Load data
-        compound_df = fread(compound)
-        compound_annotation_df = fread(compound_annotation)
-        reactome_df = fread(reactome_compound)
-        fda_df = fread(fda_approved)
+        compound_df = fread(input.compound)
+        compound_annotation_df = fread(input.compound_annotation)
+        reactome_df = fread(input.reactome_compound)
+        fda_df = fread(input.fda_approved)
 
         # Drop any duplicates in compound_annotation
         compound_annotation_df = compound_annotation_df[0, :, by("compound_id")]
