@@ -437,7 +437,7 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
         # Materialize to load into memory, had corruption issues writing back
         #  to a datatable with virtual columns (i.e., on disk columns)
         compound_annotation_df.materialize(to_memory=True)
-        compound_annotation_df.to_jay(compound_annotation)
+        compound_annotation_df.to_jay(input.compound_annotation)
 
 
 # ---- 10. Build meta analysis tables
