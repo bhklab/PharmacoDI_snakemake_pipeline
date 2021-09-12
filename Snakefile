@@ -19,7 +19,7 @@ db_name = config["db_name"]
 meta_analysis_dir = config["meta_analysis_dir"]
 write_db = config["write_db"]
 nthread = config["nthread"]
-memory_limit = int(config["memory_limit"])
+memory_limit = config["memory_limit"]
 
 pset_tables = [
     "gene_annotation", "gene", "mol_cell", "cell", "dataset_cell", 
@@ -125,7 +125,7 @@ rule map_fk_to_gctd_df:
     run:
         import PharmacoDI as pdi
         import numpy as np
-        from datatable import dt, fread, f, update, by
+        from datatable import dt, fread, f, update, by, sort
         print("Loading dfs")
         gctd_df = dt.fread(input.gctd)
         gene_df = dt.fread(input.gene)
@@ -171,6 +171,11 @@ rule map_fk_to_gctd_df:
                     f.mDataType])]
         except:
             print(e)
+        # Sort by foreign key columns
+        print("Sorting by foreign keys")
+        gctd_df = gctd_df[
+            :, :, sort([f.gene_id, f.compound_id, f.tissue_id, f.dataset_id])
+        ]
         # Add index column
         print("Adding index column")
         gctd_df[:, update(id=np.arange(1, gctd_df.shape[0] + 1))]
@@ -370,15 +375,16 @@ rule add_cell_uid_to_cell:
         cell_df.to_jay(os.path.join(output_dir, "cell.jay"))
 
 
-# ---- Add reactome_id to compound_annotation
-rule add_reactome_id_to_compound_annotation:
+# ---- Add reactome_id and FDA status to compound_annotation
+rule add_reactome_id_and_fda_status_to_compound_annotation:
     input:
-        compound = os.path.join(output_dir, "compound.jay"),
+        compound=os.path.join(output_dir, "compound.jay"),
         compound_annotation  =os.path.join(
             output_dir, 
             "compound_annotation.jay"
         ),
-        reactome_compound = os.path.join(metadata_dir, "reactome_compounds.csv")
+        reactome_compound=os.path.join(metadata_dir, "reactome_compounds.csv"),
+        fda_approved=os.path.join(metadata_dir, "FDA_True_post_review.csv")
     output:
         touch("compound_annotation.done")
     run:
@@ -388,17 +394,23 @@ rule add_reactome_id_to_compound_annotation:
         compound_df = fread(compound)
         compound_annotation_df = fread(compound_annotation)
         reactome_df = fread(reactome_compound)
+        fda_df = fread(fda_approved)
+
+        # Drop any duplicates in compound_annotation
+        compound_annotation_df = compound_annotation_df[0, :, by("compound_id")]
 
         # Join reactome ids to compound table via compound_uid
-        reactome_df.names = {"Drug_Reactome_ID": "reactome_id", 
+        reactome_df.names = {"Drug_Reactome_ID": "reactome_id",
             "PharmacoDB_ID": "compound_uid"}
         reactome_df = reactome_df[:, ["compound_uid", "reactome_id"]]
         ## FIXME:: Deal with duplicates. Maybe with string column?
         reactome_df = reactome_df[0, :, by("compound_uid")]
+        ## FIXME:: Remove this step once the annotation file is fixed
+        reactome_df[f.compound_uid == "PDBC48363", update(reactome_id=None)]
         reactome_df.key = "compound_uid"
 
-        compound_reactome = compound_df[:, 
-            [f.id, g.reactome_id], 
+        compound_reactome = compound_df[:,
+            [f.id, g.reactome_id],
             join(reactome_df)
         ]
         compound_reactome.names = {"id": "compound_id"}
@@ -408,6 +420,20 @@ rule add_reactome_id_to_compound_annotation:
         compound_annotation_df = compound_annotation_df[
             :, :, join(compound_reactome)
         ]
+
+        # Join FDA status to compound table
+        fda_df.names = {"unique.drugid": "name", "FDA": "fda_status"}
+        fda_df.key = "name"
+        compound_fda = compound_df[:, [f.id, g.fda_status], join(fda_df)]
+        compound_fda.names = {"id": "compound_id"}
+        compound_fda.key = "compound_id"
+
+        # Add FDA status to compound annotation
+        compound_annotation_df.names = {"FDA": "fda_status"}
+        compound_annotation_df[
+            :, update(fda_status=g.fda_status), join(compound_fda)
+        ]
+
         # Materialize to load into memory, had corruption issues writing back
         #  to a datatable with virtual columns (i.e., on disk columns)
         compound_annotation_df.materialize(to_memory=True)
@@ -428,7 +454,7 @@ rule build_meta_analysis_tables:
         run_compound_annotation_rule=os.path.join(
             output_dir,
             "compound_annotation.done"
-        )
+        ),
         gene_compound_tissue_file=os.path.join(
             "rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay"
         ),
