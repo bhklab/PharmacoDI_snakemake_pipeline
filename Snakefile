@@ -417,6 +417,9 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
         compound_annotation_df = compound_annotation_df[
             :, :, join(compound_reactome)
         ]
+        compound_annotation_df[
+            :, update(reactome_id=dt.as_type(f.reactome_id, str))
+        ]
 
         # Join FDA status to compound table
         fda_df.names = {"unique.drugid": "name", "FDA": "fda_status"}
