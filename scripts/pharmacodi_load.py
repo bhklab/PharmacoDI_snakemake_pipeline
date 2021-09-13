@@ -90,6 +90,7 @@ class Compound_Annotation(Base):
     pubchem = Column(Text(65535))
     fda_status = Column(Boolean)
     chembl_id = Column(Text(65535))
+    reactome_id = Column(Text(65535))
 
 
 class Gene_Annotation(Base):
@@ -432,7 +433,7 @@ def bulk_insert(file_path, table):
 
 
 @logger.catch
-def bulk_insert_chunk_from_file(file_path, table, chunksize=100000):
+def bulk_insert_chunk_from_file(file_path, table, chunksize=1000000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
@@ -447,7 +448,7 @@ def bulk_insert_chunk(
     data_df: dt.Frame,
     table: sqlalchemy.Table,
     session: sqlalchemy.orm.Session, 
-    chunksize: int = 100000, 
+    chunksize: int = 1000000, 
     start_index: int = 0
 ) -> None:
     """
@@ -475,7 +476,7 @@ def bulk_insert_chunk(
     for idx in tqdm(index_tuple_list, colour='magenta'):
         df = filter_df[idx[0]:(idx[1] + 1), :].to_pandas()
         row_dict = create_records(df)
-        session.bulk_insert_mappings(table, row_dict)
+        session.bulk_insert_mappings(table, row_dict, render_nulls=True)
         session.commit()
 
 
@@ -484,7 +485,7 @@ def bulk_insert_chunk(
 def chunk_append_to_table(
     file_path: str, 
     table: sqlalchemy.Table, 
-    chunksize: int = 100000
+    chunksize: int = 10000000
 ) -> None:
     """
     Append to an existing database table after the highest value of the id

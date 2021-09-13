@@ -82,18 +82,14 @@ rule merge_pset_tables:
     input:
         expand(os.path.join(f"{procdata_dir}", "{pset}", "{pset}_log.txt"), 
             pset=pset_names),
-        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv"),
-        reactome_compound_file = os.path.join(
-            metadata_dir, 
-            "reactome_compounds.csv"
-        )
+        compound_meta_file = os.path.join(metadata_dir, "drugs_with_ids.csv")
     output:
         expand("{output}/{table}.jay", output=output_dir, table=pset_tables)
     run:
         try:
             import PharmacoDI as pdi
             pdi.combine_all_pset_tables(procdata_dir, output_dir, 
-                input.compound_meta_file, input.reactome_compound_file)
+                input.compound_meta_file)
         except BaseException as e:
             print(e)
 
@@ -398,6 +394,7 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
 
         # Drop any duplicates in compound_annotation
         compound_annotation_df = compound_annotation_df[0, :, by("compound_id")]
+        compound_annotation_df.names = {"molecule_chembl_id": "chembl_id"}
 
         # Join reactome ids to compound table via compound_uid
         reactome_df.names = {"Drug_Reactome_ID": "reactome_id",
