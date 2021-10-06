@@ -137,10 +137,10 @@ rule map_fk_to_gctd_df:
         import numpy as np
         from datatable import dt, fread, f, update, by, sort, join, g
         print("Loading dfs")
-        gctd_df = dt.fread(gctd)
+        gctd_df = dt.fread(input.gctd)
         ## FIXME:: Remove this when gene signatures are regenerated
         ## START patch
-        fix_names_df = dt.fread(compound_names)
+        fix_names_df = dt.fread(input.compound_names)
         fix_names_df[f.dataset == "GDSC_2020(v1-8.2)", update(dataset="GDSC_v1")]
         fix_names_df[f.dataset == "GDSC_2020(v2-8.2)", update(dataset="GDSC_v2")]
         fix_names_df.names = {"drugid": "compound", "unique.drugid": "compound_id"}
@@ -148,10 +148,10 @@ rule map_fk_to_gctd_df:
         gctd_df[~dt.isna(g.compound_id), update(compound=g.compound_id), 
             join(fix_names_df)]
         ## END patch
-        gene_df = dt.fread(gene)
-        compound_df = dt.fread(compound)
-        tissue_df = dt.fread(tissue)
-        dataset_df = dt.fread(dataset)
+        gene_df = dt.fread(input.gene)
+        compound_df = dt.fread(input.compound)
+        tissue_df = dt.fread(input.tissue)
+        dataset_df = dt.fread(input.dataset)
         print("Joining with gene")
         pdi.map_foreign_key_to_table(
             primary_df=gctd_df, 
@@ -216,9 +216,9 @@ rule build_synonym_tables:
         try:
             import PharmacoDI as pdi
             print("Building synonym tables...")
-            pdi.build_cell_synonym_df(cell_file, output_dir)
-            pdi.build_tissue_synonym_df(cell_file, output_dir)
-            pdi.build_compound_synonym_df(compound_file, output_dir)
+            pdi.build_cell_synonym_df(input.cell_file, output_dir)
+            pdi.build_tissue_synonym_df(input.cell_file, output_dir)
+            pdi.build_compound_synonym_df(input.compound_file, output_dir)
         except BaseException as e:
             print(e)
 
