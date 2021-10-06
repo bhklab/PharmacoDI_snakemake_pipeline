@@ -41,7 +41,7 @@ if not os.path.exists(metadata_dir):
                                     "not found!")
 if not os.path.exists(gene_sig_dir):
     raise FileNotFoundError(f"The gene signatures directory {gene_sig_dir}",
-                                    " was not found!")
+        " was not found!")
 
 
 # Target rule, runs all other rules to generate all required outputs
@@ -49,7 +49,19 @@ if not os.path.exists(gene_sig_dir):
 rule all:
     input:
         expand("{output}/{table}.jay", output=output_dir, 
-            table=(pset_tables + gct_table + meta_tables))
+            table=(pset_tables + gct_table + meta_tables)),
+        run_cell_annotation_rule=os.path.join(
+            output_dir,
+            "cell_annotation.done"
+        ),
+        run_mapping_rule=os.path.join(
+            output_dir, 
+            "gene_annotations_mapped.done"
+        ),
+        run_compound_annotation_rule=os.path.join(
+            output_dir,
+            "compound_annotation.done"
+        )
     run:
         from scripts.pharmacodi_load import setup_database, seed_tables
         user = os.environ.get("MYSQL_USER")
@@ -115,19 +127,31 @@ rule map_fk_to_gctd_df:
         gene=os.path.join(output_dir, "gene.jay"),
         compound=os.path.join(output_dir, "compound.jay"),
         tissue=os.path.join(output_dir, "tissue.jay"),
-        dataset=os.path.join(output_dir, "dataset.jay")
+        dataset=os.path.join(output_dir, "dataset.jay"),
+        compound_names=os.path.join(metadata_dir, 
+            "drugid_not_in_drugs_with_ids.csv")
     output:
         os.path.join(output_dir, "gene_compound_tissue_dataset.jay")
     run:
         import PharmacoDI as pdi
         import numpy as np
-        from datatable import dt, fread, f, update, by, sort
+        from datatable import dt, fread, f, update, by, sort, join, g
         print("Loading dfs")
-        gctd_df = dt.fread(input.gctd)
-        gene_df = dt.fread(input.gene)
-        compound_df = dt.fread(input.compound)
-        tissue_df = dt.fread(input.tissue)
-        dataset_df = dt.fread(input.dataset)
+        gctd_df = dt.fread(gctd)
+        ## FIXME:: Remove this when gene signatures are regenerated
+        ## START patch
+        fix_names_df = dt.fread(compound_names)
+        fix_names_df[f.dataset == "GDSC_2020(v1-8.2)", update(dataset="GDSC_v1")]
+        fix_names_df[f.dataset == "GDSC_2020(v2-8.2)", update(dataset="GDSC_v2")]
+        fix_names_df.names = {"drugid": "compound", "unique.drugid": "compound_id"}
+        fix_names_df.key = ["compound", "dataset"]
+        gctd_df[~dt.isna(g.compound_id), update(compound=g.compound_id), 
+            join(fix_names_df)]
+        ## END patch
+        gene_df = dt.fread(gene)
+        compound_df = dt.fread(compound)
+        tissue_df = dt.fread(tissue)
+        dataset_df = dt.fread(dataset)
         print("Joining with gene")
         pdi.map_foreign_key_to_table(
             primary_df=gctd_df, 
@@ -154,7 +178,7 @@ rule map_fk_to_gctd_df:
         )
         print("Updating column names")
         gctd_df[:, update(sens_stat="AAC")]
-        print("Updating permutatio_done column")
+        print("Updating permutation_done column")
         gctd_df[:, update(permutation_done=False)]
         gctd_df[~dt.isna(f.fdr_permutation), update(permutation_done=True)]
         gctd_df.names = {"gene": "gene_id", "compound": "compound_id", 
@@ -191,10 +215,10 @@ rule build_synonym_tables:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 3")
-            pdi.build_cell_synonym_df(input.cell_file, output_dir)
-            pdi.build_tissue_synonym_df(input.cell_file, output_dir)
-            pdi.build_compound_synonym_df(input.compound_file, output_dir)
+            print("Building synonym tables...")
+            pdi.build_cell_synonym_df(cell_file, output_dir)
+            pdi.build_tissue_synonym_df(cell_file, output_dir)
+            pdi.build_compound_synonym_df(compound_file, output_dir)
         except BaseException as e:
             print(e)
 
@@ -209,7 +233,7 @@ rule get_chembl_targets:
     run:
         try:
             import PharmacoDI as pdi
-            print("Running rule 4a")
+            print("Getting ChEMBL targets")
             pdi.get_chembl_targets(params)
         except BaseException as e:
             print(e)
@@ -429,7 +453,6 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
         compound_fda.key = "compound_id"
 
         # Add FDA status to compound annotation
-        compound_annotation_df.names = {"FDA": "fda_status"}
         compound_annotation_df[
             :, update(fda_status=g.fda_status), join(compound_fda)
         ]
@@ -443,18 +466,6 @@ rule add_reactome_id_and_fda_status_to_compound_annotation:
 # ---- 10. Build meta analysis tables
 rule build_meta_analysis_tables:
     input:
-        run_cell_annotation_rule=os.path.join(
-            output_dir,
-            "cell_annotation.done"
-        ),
-        run_mapping_rule=os.path.join(
-            output_dir, 
-            "gene_annotations_mapped.done"
-        ),
-        run_compound_annotation_rule=os.path.join(
-            output_dir,
-            "compound_annotation.done"
-        ),
         gene_compound_tissue_file=os.path.join(
             "rawdata/gene_signatures/metaanalysis/gene_compound_tissue.jay"
         ),

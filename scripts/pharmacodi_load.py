@@ -13,9 +13,10 @@ import pandas as pd
 import numpy as np
 from datatable import dt, fread
 
-# -- Progress bar
+# -- Progress
 from tqdm import tqdm
 import subprocess # to use shell to check number of rows
+from datatime import datetime, timedelta
 
 # -- Enable logging
 from loguru import logger
@@ -433,7 +434,7 @@ def bulk_insert(file_path, table):
 
 
 @logger.catch
-def bulk_insert_chunk_from_file(file_path, table, chunksize=1000000):
+def bulk_insert_chunk_from_file(file_path, table, chunksize=100000):
     """Batched INSERT statements via the ORM "bulk", using dictionaries."""
     logger.info(f'\tInserting data from {os.path.basename(file_path)}...')
     session = Session(bind=engine)
@@ -566,3 +567,47 @@ def seed_tables(data_dir):
     #     Gene_Compound)
     logger.info('Building gene_compound_* tables... DONE!\n')
     logger.info('\n\nDONE LOADING DATABASE TABLES!')
+
+    logger.info("Optimizing database")
+    with engine.connect() as con:
+        # Currently not using partitioning
+        gctd_hash_partition = text(
+            "ALTER TABLE gene_compound_tissue_dataset"
+            "PARTITION BY HASH(gene_id) PARITIONS 40;"
+        )
+        gcd_hash_partition = text(
+            "ALTER TABLE gene_compound_dataset"
+            "PARTITION BY HASH(gene_id) PARTITIONS 20;"
+        )
+        # Covering indexes greatly improve speed of large tabel queries
+        gctd_covering_index = text(
+            "ALTER TABLE gene_compound_tissue_dataset"
+            "ADD INDEX (gene_id, compound_id, tissue_id, dataset_id, "
+            "mDataType, permutation_done, estimate, fdr_analytic, "
+            "fdr_permutation, lower_analytic, upper_analytic, "
+            "lower_permutation, upper_permutation, pvalue_analytic, "
+            "pvalue_permutation);"
+        )
+        gcd_covering_index = text(
+            "ALTER TABLE gene_compound_dataset"
+            "ADD INDEX (gene_id, compound_id, dataset_id, mDataType, "
+            "permutation_done, estimate, lower_analytic, upper_analytic, "
+            "lower_permutation, upper_permutation, fdr_analytic, "
+            "fdr_permutation, pvalue_analytic, pvalue_permutation, n, df;"
+        )
+        logger.info(f"Adding covering index to gene_compound_tissue_dataset, "
+            f"estimated completion: {datetime.now() + timedelta(hours=5.5)}")
+        con.execute(gctd_covering_index)
+        logger.info(f"Adding covering index to gene_compound_tissue_dataset, "
+            f"estimated completion: {datetime.now() + timedelta(minutes=40)}")
+        con.execute(gcd_covering_index)
+        con.execute("COMMIT;")
+        logger.info(f"Partitioning gene_compound_tissue_dataset by gene_id")
+        con.execute(gctd_hash_partition)
+        con.execute("COMMIT;")
+        logger.info("Partitioning gene_compound_dataset by gene_id")
+        con.execute(gcd_hash_parition)
+        con.exceute("COMMIT;")
+
+
+

@@ -6,7 +6,7 @@ proc_data: 'procdata'
 output: 'latest'
 psets: ['GDSC_v1', 'GDSC_v2', 'CTRPv2', 'FIMM', 'gCSI', 'GRAY', 'CCLE', 
   'UHNBreast', 'PRISM', 'NCI60']
-db_name: 'pharmacodb_test1'
+db_name: 'pharmacodb_test'
 meta_analysis_dir: 'rawdata/gene_signatures/metaanalysis'
-write_db: false
+write_db: true
 memory_limit: 600000000000
