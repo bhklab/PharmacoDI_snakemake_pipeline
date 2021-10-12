@@ -16,7 +16,7 @@ from datatable import dt, fread
 # -- Progress
 from tqdm import tqdm
 import subprocess # to use shell to check number of rows
-from datatime import datetime, timedelta
+from datetime import datetime, timedelta
 
 # -- Enable logging
 from loguru import logger
@@ -572,16 +572,16 @@ def seed_tables(data_dir):
     with engine.connect() as con:
         # Currently not using partitioning
         gctd_hash_partition = text(
-            "ALTER TABLE gene_compound_tissue_dataset"
+            "ALTER TABLE gene_compound_tissue_dataset "
             "PARTITION BY HASH(gene_id) PARITIONS 40;"
         )
         gcd_hash_partition = text(
-            "ALTER TABLE gene_compound_dataset"
+            "ALTER TABLE gene_compound_dataset "
             "PARTITION BY HASH(gene_id) PARTITIONS 20;"
         )
         # Covering indexes greatly improve speed of large tabel queries
         gctd_covering_index = text(
-            "ALTER TABLE gene_compound_tissue_dataset"
+            "ALTER TABLE gene_compound_tissue_dataset "
             "ADD INDEX (gene_id, compound_id, tissue_id, dataset_id, "
             "mDataType, permutation_done, estimate, fdr_analytic, "
             "fdr_permutation, lower_analytic, upper_analytic, "
@@ -589,7 +589,7 @@ def seed_tables(data_dir):
             "pvalue_permutation);"
         )
         gcd_covering_index = text(
-            "ALTER TABLE gene_compound_dataset"
+            "ALTER TABLE gene_compound_dataset "
             "ADD INDEX (gene_id, compound_id, dataset_id, mDataType, "
             "permutation_done, estimate, lower_analytic, upper_analytic, "
             "lower_permutation, upper_permutation, fdr_analytic, "

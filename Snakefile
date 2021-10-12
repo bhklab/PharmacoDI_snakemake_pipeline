@@ -81,7 +81,7 @@ rule build_pset_tables:
             import PharmacoDI as pdi
             pset_dict = pdi.pset_df_to_nested_dict(
                 pdi.read_pset(wildcards.pset, pset_dir)
-                )
+            )
             print("PSet dict built")
             pdi.build_all_pset_tables(pset_dict, wildcards.pset, procdata_dir, 
                 gene_sig_dir)
@@ -475,7 +475,9 @@ rule build_meta_analysis_tables:
         gene_file = os.path.join(output_dir, "gene.jay"),
         compound_file = os.path.join(output_dir, "compound.jay"),
         tissue_file = os.path.join(output_dir, "tissue.jay"),
-        dataset_file = os.path.join(output_dir, "dataset.jay")
+        dataset_file = os.path.join(output_dir, "dataset.jay"),
+        compound_names=os.path.join(metadata_dir, 
+            "drugid_not_in_drugs_with_ids.csv")
     output:
         os.path.join(output_dir, "gene_compound_tissue.jay"),
         os.path.join(output_dir, "gene_compound_dataset.jay")
@@ -487,11 +489,13 @@ rule build_meta_analysis_tables:
                 input.gene_compound_tissue_file, 
                 input.gene_file, input.compound_file,
                 input.tissue_file, output_dir
-                )
+            )
             print("Running gene_compound_dataset_df")
             pdi.build_gene_compound_dataset_df(
                 input.gene_compound_dataset_file, 
                 input.gene_file, input.compound_file,
-                input.dataset_file, output_dir)
+                input.dataset_file, output_dir,
+                input.compound_names
+            )
         except:
             print(e)
