@@ -504,7 +504,7 @@ def chunk_append_to_table(
     session = Session(bind=engine)
     logger.info(f'Inserting after table id: {max_index}')
     bulk_insert_chunk(
-        data_df=data_df, table=table, session=session, chunksize=chunksize, 
+        data_df=data_df, table=table, session=session, chunksize=chunksize,
         start_index=(max_index - 1)
     )
     logger.info(f'\tAppending data from {os.path.basename(file_path)} to {table_name}... DONE!\n')
@@ -573,7 +573,7 @@ def seed_tables(data_dir):
         # Currently not using partitioning
         gctd_hash_partition = text(
             "ALTER TABLE gene_compound_tissue_dataset "
-            "PARTITION BY HASH(gene_id) PARITIONS 40;"
+            "PARTITION BY HASH(gene_id) PARTITIONS 40;"
         )
         gcd_hash_partition = text(
             "ALTER TABLE gene_compound_dataset "
@@ -593,7 +593,11 @@ def seed_tables(data_dir):
             "ADD INDEX (gene_id, compound_id, dataset_id, mDataType, "
             "permutation_done, estimate, lower_analytic, upper_analytic, "
             "lower_permutation, upper_permutation, fdr_analytic, "
-            "fdr_permutation, pvalue_analytic, pvalue_permutation, n, df;"
+            "fdr_permutation, pvalue_analytic, pvalue_permutation, n, df);"
+        )
+        gct_index = text(
+            "CREATE INDEX idx_gene_mDataType_tissue "
+            "ON gene_compound_tissue(gene_id, mDataType, tissue_id);"
         )
         logger.info(f"Adding covering index to gene_compound_tissue_dataset, "
             f"estimated completion: {datetime.now() + timedelta(hours=5.5)}")
@@ -601,6 +605,9 @@ def seed_tables(data_dir):
         logger.info(f"Adding covering index to gene_compound_tissue_dataset, "
             f"estimated completion: {datetime.now() + timedelta(minutes=40)}")
         con.execute(gcd_covering_index)
+        con.execute("COMMIT;")
+        logger.info("Adding index to gene_compound_tissue")
+        con.execute(gct_index)
         con.execute("COMMIT;")
         logger.info(f"Partitioning gene_compound_tissue_dataset by gene_id")
         con.execute(gctd_hash_partition)
